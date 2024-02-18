@@ -108,15 +108,17 @@ import { context } from './context-api';
 import { diag } from './diag-api';
 import { metrics } from './metrics-api';
 import { propagation } from './propagation-api';
+import { testing } from './testing-api';
 import { trace } from './trace-api';
 
 // Named export.
-export { context, diag, metrics, propagation, trace };
+export { context, diag, metrics, propagation, testing, trace };
 // Default export.
 export default {
   context,
   diag,
   metrics,
   propagation,
+  testing,
   trace,
 };
