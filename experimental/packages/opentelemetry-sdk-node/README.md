@@ -36,6 +36,7 @@ Before any other module in your application is loaded, you must initialize the S
 If you fail to initialize the SDK or initialize it too late, no-op implementations will be provided to any library which acquires a tracer or meter from the API.
 
 This example uses Jaeger and Prometheus, but exporters exist for [other tracing backends][other-tracing-backends].
+As shown in the installation instructions, exporters passed to the SDK must be installed alongside `@opentelemetry/sdk-node`.
 
 ```javascript
 const opentelemetry = require("@opentelemetry/sdk-node");
@@ -46,10 +47,10 @@ const {
 } = require("@opentelemetry/auto-instrumentations-node");
 
 const jaegerExporter = new JaegerExporter();
-const prometheusExporter = new PrometheusExporter({ startServer: true });
+const prometheusExporter = new PrometheusExporter();
 
 const sdk = new opentelemetry.NodeSDK({
-  // Optional - if omitted, the tracing SDK will not be initialized
+  // Optional - if omitted, the tracing SDK will be initialized from environment variables
   traceExporter: jaegerExporter,
   // Optional - If omitted, the metrics SDK will not be initialized
   metricReader: prometheusExporter,
@@ -58,11 +59,7 @@ const sdk = new opentelemetry.NodeSDK({
   // See the Configuration section below for additional  configuration options
 });
 
-// You can optionally detect resources asynchronously from the environment.
-// Detected resources are merged with the resources provided in the SDK configuration.
-sdk.start().then(() => {
-  // Resources have been detected and SDK is started
-});
+sdk.start();
 
 // You can also use the shutdown method to gracefully shut down the SDK before process shutdown
 // or on some operating system signal.
@@ -127,6 +124,12 @@ Configure a custom sampler. By default, all traces will be sampled.
 
 ### spanProcessor
 
+Deprecated, please use [spanProcessors](#spanprocessors) instead.
+
+### spanProcessors
+
+An array of span processors to register to the tracer provider.
+
 ### traceExporter
 
 Configure a trace exporter. If an exporter is configured, it will be used with a [BatchSpanProcessor](../../../packages/opentelemetry-sdk-trace-base/src/platform/node/export/BatchSpanProcessor.ts). If an exporter OR span processor is not configured programatically, this package will auto setup the default `otlp` exporter  with `http/protobuf` protocol with a `BatchSpanProcessor`.
@@ -139,7 +142,25 @@ Configure tracing parameters. These are the same trace parameters used to [confi
 
 Configure the [service name](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/resource/semantic_conventions/README.md#service).
 
-## Configure Trace Exporter from  Environment
+## Disable the SDK from the environment
+
+Disable the SDK by setting the `OTEL_SDK_DISABLED` environment variable to `true`.
+
+## Configure log level from the environment
+
+Set the log level by setting the `OTEL_LOG_LEVEL` environment variable to enums:
+
+- `NONE`,
+- `ERROR`,
+- `WARN`,
+- `INFO`,
+- `DEBUG`,
+- `VERBOSE`,
+- `ALL`.
+
+The default level is `INFO`.
+
+## Configure Trace Exporter from environment
 
 This is an alternative to programmatically configuring an exporter or span processor. This package will auto setup the default `otlp` exporter with `http/protobuf` protocol if `traceExporter` or `spanProcessor` hasn't been passed into the `NodeSDK` constructor.
 

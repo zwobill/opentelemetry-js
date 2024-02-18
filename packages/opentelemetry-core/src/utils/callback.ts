@@ -22,11 +22,14 @@ import { Deferred } from './promise';
 export class BindOnceFuture<
   R,
   This = unknown,
-  T extends (this: This, ...args: unknown[]) => R = () => R
+  T extends (this: This, ...args: unknown[]) => R = () => R,
 > {
   private _isCalled = false;
   private _deferred = new Deferred<R>();
-  constructor(private _callback: T, private _that: This) {}
+  constructor(
+    private _callback: T,
+    private _that: This
+  ) {}
 
   get isCalled() {
     return this._isCalled;
@@ -40,11 +43,10 @@ export class BindOnceFuture<
     if (!this._isCalled) {
       this._isCalled = true;
       try {
-        Promise.resolve(this._callback.call(this._that, ...args))
-          .then(
-            val => this._deferred.resolve(val),
-            err => this._deferred.reject(err)
-          );
+        Promise.resolve(this._callback.call(this._that, ...args)).then(
+          val => this._deferred.resolve(val),
+          err => this._deferred.reject(err)
+        );
       } catch (err) {
         this._deferred.reject(err);
       }

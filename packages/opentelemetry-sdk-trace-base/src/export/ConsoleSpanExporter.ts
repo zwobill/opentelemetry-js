@@ -46,6 +46,13 @@ export class ConsoleSpanExporter implements SpanExporter {
    */
   shutdown(): Promise<void> {
     this._sendSpans([]);
+    return this.forceFlush();
+  }
+
+  /**
+   * Exports any pending spans in exporter
+   */
+  forceFlush(): Promise<void> {
     return Promise.resolve();
   }
 
@@ -57,6 +64,7 @@ export class ConsoleSpanExporter implements SpanExporter {
     return {
       traceId: span.spanContext().traceId,
       parentId: span.parentSpanId,
+      traceState: span.spanContext().traceState?.serialize(),
       name: span.name,
       id: span.spanContext().spanId,
       kind: span.kind,
@@ -65,7 +73,7 @@ export class ConsoleSpanExporter implements SpanExporter {
       attributes: span.attributes,
       status: span.status,
       events: span.events,
-      links: span.links
+      links: span.links,
     };
   }
 

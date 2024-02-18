@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+/// <reference types="zone.js" />
 import { Context, ContextManager, ROOT_CONTEXT } from '@opentelemetry/api';
 import { TargetWithEvents } from './types';
 import { isListenerObject } from './util';
@@ -65,7 +66,7 @@ export class ZoneContextManager implements ContextManager {
       writable: false,
       value: target.length,
     });
-    return (contextWrapper as unknown) as T;
+    return contextWrapper as unknown as T;
   }
 
   /**
@@ -73,7 +74,7 @@ export class ZoneContextManager implements ContextManager {
    * @param obj target object on which the listeners will be patched
    */
   private _bindListener<T>(context: Context, obj: T): T {
-    const target = (obj as unknown) as TargetWithEvents;
+    const target = obj as unknown as TargetWithEvents;
     if (target.__ot_listeners !== undefined) {
       return obj;
     }
@@ -140,12 +141,7 @@ export class ZoneContextManager implements ContextManager {
   ) {
     const contextManager = this;
 
-    return function (
-      this: TargetWithEvents,
-      event,
-      listener,
-      opts
-    ) {
+    return function (this: TargetWithEvents, event, listener, opts) {
       if (target.__ot_listeners === undefined) {
         target.__ot_listeners = {};
       }
@@ -217,7 +213,7 @@ export class ZoneContextManager implements ContextManager {
     } else if (isListenerObject(target)) {
       this._bindListener(context, target);
     }
-    return (target as unknown) as T;
+    return target as unknown as T;
   }
 
   /**

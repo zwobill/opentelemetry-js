@@ -1,7 +1,15 @@
-# OpenTelemetry Jaeger Trace Exporter for Node.js
+# (Deprecated) OpenTelemetry Jaeger Trace Exporter for Node.js
 
 [![NPM Published Version][npm-img]][npm-url]
 [![Apache License][license-image]][license-image]
+
+**NOTE: Support for `@opentelemetry/exporter-jaeger` will end March 2024, please use any of the following packages instead:**
+
+- `@opentelemetry/exporter-trace-otlp-proto`
+- `@opentelemetry/exporter-trace-otlp-grpc`
+- `@opentelemetry/exporter-trace-otlp-http`
+
+**NOTE: Bundling (with e.g. `webpack`, `rollup`, `esbuild`, ...) is not supported by this package. Please use `@opentelemetry/exporter-trace-otlp-proto` instead.**
 
 OpenTelemetry Jaeger Trace Exporter allows the user to send collected traces to Jaeger.
 

@@ -44,7 +44,10 @@ function getUrlNormalizingAnchor(): HTMLAnchorElement {
  * @param key
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function hasKey<O>(obj: O, key: keyof any): key is keyof O {
+export function hasKey<O extends object>(
+  obj: O,
+  key: keyof any
+): key is keyof O {
   return key in obj;
 }
 
@@ -82,7 +85,12 @@ export function addSpanNetworkEvents(
   addSpanNetworkEvent(span, PTN.DOMAIN_LOOKUP_START, resource);
   addSpanNetworkEvent(span, PTN.DOMAIN_LOOKUP_END, resource);
   addSpanNetworkEvent(span, PTN.CONNECT_START, resource);
-  addSpanNetworkEvent(span, PTN.SECURE_CONNECTION_START, resource);
+  if (
+    hasKey(resource as PerformanceResourceTiming, 'name') &&
+    (resource as PerformanceResourceTiming)['name'].startsWith('https:')
+  ) {
+    addSpanNetworkEvent(span, PTN.SECURE_CONNECTION_START, resource);
+  }
   addSpanNetworkEvent(span, PTN.CONNECT_END, resource);
   addSpanNetworkEvent(span, PTN.REQUEST_START, resource);
   addSpanNetworkEvent(span, PTN.RESPONSE_START, resource);
@@ -108,7 +116,9 @@ export function addSpanNetworkEvents(
  * sort resources by startTime
  * @param filteredResources
  */
-export function sortResources(filteredResources: PerformanceResourceTiming[]): PerformanceResourceTiming[] {
+export function sortResources(
+  filteredResources: PerformanceResourceTiming[]
+): PerformanceResourceTiming[] {
   return filteredResources.slice().sort((a, b) => {
     const valueA = a[PTN.FETCH_START];
     const valueB = b[PTN.FETCH_START];
@@ -119,6 +129,11 @@ export function sortResources(filteredResources: PerformanceResourceTiming[]): P
     }
     return 0;
   });
+}
+
+/** Returns the origin if present (if in browser context). */
+function getOrigin(): string | undefined {
+  return typeof location !== 'undefined' ? location.origin : undefined;
 }
 
 /**
@@ -164,7 +179,7 @@ export function getResource(
   }
   const sorted = sortResources(filteredResources);
 
-  if (parsedSpanUrl.origin !== location.origin && sorted.length > 1) {
+  if (parsedSpanUrl.origin !== getOrigin() && sorted.length > 1) {
     let corsPreFlightRequest: PerformanceResourceTiming | undefined = sorted[0];
     let mainRequest: PerformanceResourceTiming = findMainRequest(
       sorted,
@@ -300,7 +315,14 @@ export interface URLLike {
  */
 export function parseUrl(url: string): URLLike {
   if (typeof URL === 'function') {
-    return new URL(url, location.href);
+    return new URL(
+      url,
+      typeof document !== 'undefined'
+        ? document.baseURI
+        : typeof location !== 'undefined' // Some JS runtimes (e.g. Deno) don't define this
+        ? location.href
+        : undefined
+    );
   }
   const element = getUrlNormalizingAnchor();
   element.href = url;
@@ -421,7 +443,7 @@ export function shouldPropagateTraceHeaders(
   }
   const parsedSpanUrl = parseUrl(spanUrl);
 
-  if (parsedSpanUrl.origin === location.origin) {
+  if (parsedSpanUrl.origin === getOrigin()) {
     return true;
   } else {
     return propagateTraceHeaderUrls.some(propagateTraceHeaderUrl =>

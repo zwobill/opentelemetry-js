@@ -13,9 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 import { Attributes } from '@opentelemetry/api';
-
 export interface LoggerOptions {
   /**
    * The schemaUrl of the tracer or instrumentation library
@@ -24,19 +22,13 @@ export interface LoggerOptions {
   schemaUrl?: string;
 
   /**
-   * The default domain for events created by the Logger.
-   *
-   * The combination of event name and event domain uiquely identifies an event.
-   * By supplying an event domain, it is possible to use the same event name across
-   * different domains / use cases.
-   *
-   * The default domain can be overridden when emitting an individual event.
-   * @default ''
-   */
-  eventDomain?: string;
-
-  /**
    * The instrumentation scope attributes to associate with emitted telemetry
    */
   scopeAttributes?: Attributes;
+
+  /**
+   * Specifies whether the Trace Context should automatically be passed on to the LogRecords emitted by the Logger.
+   * @default true
+   */
+  includeTraceContext?: boolean;
 }

@@ -13,21 +13,47 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
-import { TraceState, hexToBase64 } from '@opentelemetry/core';
+import { SpanKind, SpanStatusCode, TraceFlags } from '@opentelemetry/api';
+import { TraceState, hexToBinary } from '@opentelemetry/core';
 import { Resource } from '@opentelemetry/resources';
 import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import * as assert from 'assert';
-import { createExportTraceServiceRequest, ESpanKind, EStatusCode } from '../src';
+import {
+  OtlpEncodingOptions,
+  createExportTraceServiceRequest,
+  ESpanKind,
+  EStatusCode,
+} from '../src';
 
-function createExpectedSpanJson(useHex: boolean){
-  const traceId = useHex? '00000000000000000000000000000001' : hexToBase64('00000000000000000000000000000001');
-  const spanId = useHex? '0000000000000002' : hexToBase64('0000000000000002');
-  const parentSpanId = useHex? '0000000000000001' : hexToBase64('0000000000000001');
-  const linkSpanId = useHex? '0000000000000003' : hexToBase64('0000000000000003');
-  const linkTraceId = useHex? '00000000000000000000000000000002' : hexToBase64('00000000000000000000000000000002');
+function createExpectedSpanJson(options: OtlpEncodingOptions) {
+  const useHex = options.useHex ?? false;
+  const useLongBits = options.useLongBits ?? true;
 
-  return  {
+  const startTime = useLongBits
+    ? { low: 1155450124, high: 382008859 }
+    : '1640715557342725388';
+  const endTime = useLongBits
+    ? { low: 2455450124, high: 382008859 }
+    : '1640715558642725388';
+  const eventTime = useLongBits
+    ? { low: 2355450124, high: 382008859 }
+    : '1640715558542725388';
+
+  const traceId = useHex
+    ? '00000000000000000000000000000001'
+    : hexToBinary('00000000000000000000000000000001');
+  const spanId = useHex ? '0000000000000002' : hexToBinary('0000000000000002');
+  const parentSpanId = useHex
+    ? '0000000000000001'
+    : hexToBinary('0000000000000001');
+  const linkSpanId = useHex
+    ? '0000000000000003'
+    : hexToBinary('0000000000000003');
+  const linkTraceId = useHex
+    ? '00000000000000000000000000000002'
+    : hexToBinary('00000000000000000000000000000002');
+
+  return {
     resourceSpans: [
       {
         resource: {
@@ -48,6 +74,7 @@ function createExpectedSpanJson(useHex: boolean){
                 traceId: traceId,
                 spanId: spanId,
                 parentSpanId: parentSpanId,
+                traceState: 'span=bar',
                 name: 'span-name',
                 kind: ESpanKind.SPAN_KIND_CLIENT,
                 links: [
@@ -55,20 +82,19 @@ function createExpectedSpanJson(useHex: boolean){
                     droppedAttributesCount: 0,
                     spanId: linkSpanId,
                     traceId: linkTraceId,
+                    traceState: 'link=foo',
                     attributes: [
                       {
                         key: 'link-attribute',
                         value: {
-                          stringValue: 'string value'
-                        }
-                      }
-                    ]
-                  }
+                          stringValue: 'string value',
+                        },
+                      },
+                    ],
+                  },
                 ],
-                // eslint-disable-next-line @typescript-eslint/no-loss-of-precision
-                startTimeUnixNano: 1640715557342725388,
-                // eslint-disable-next-line @typescript-eslint/no-loss-of-precision
-                endTimeUnixNano: 1640715558642725388,
+                startTimeUnixNano: startTime,
+                endTimeUnixNano: endTime,
                 events: [
                   {
                     droppedAttributesCount: 0,
@@ -76,13 +102,13 @@ function createExpectedSpanJson(useHex: boolean){
                       {
                         key: 'event-attribute',
                         value: {
-                          stringValue: 'some string value'
-                        }
-                      }
+                          stringValue: 'some string value',
+                        },
+                      },
                     ],
                     name: 'some event',
-                    timeUnixNano: 1640715558542725400
-                  }
+                    timeUnixNano: eventTime,
+                  },
                 ],
                 attributes: [
                   {
@@ -119,10 +145,10 @@ describe('Trace', () => {
       span = {
         spanContext: () => ({
           spanId: '0000000000000002',
-          traceFlags: 1,
+          traceFlags: TraceFlags.SAMPLED,
           traceId: '00000000000000000000000000000001',
           isRemote: false,
-          traceState: new TraceState(''),
+          traceState: new TraceState('span=bar'),
         }),
         parentSpanId: '0000000000000001',
         attributes: { 'string-attribute': 'some attribute value' },
@@ -134,9 +160,9 @@ describe('Trace', () => {
             name: 'some event',
             time: [1640715558, 542725388],
             attributes: {
-              'event-attribute': 'some string value'
-            }
-          }
+              'event-attribute': 'some string value',
+            },
+          },
         ],
         instrumentationLibrary: {
           name: 'myLib',
@@ -149,14 +175,14 @@ describe('Trace', () => {
             context: {
               spanId: '0000000000000003',
               traceId: '00000000000000000000000000000002',
-              traceFlags: 1,
+              traceFlags: TraceFlags.SAMPLED,
               isRemote: false,
-              traceState: new TraceState('')
+              traceState: new TraceState('link=foo'),
             },
             attributes: {
-              'link-attribute': 'string value'
-            }
-          }
+              'link-attribute': 'string value',
+            },
+          },
         ],
         name: 'span-name',
         resource,
@@ -164,88 +190,156 @@ describe('Trace', () => {
         status: {
           code: SpanStatusCode.OK,
         },
+        droppedAttributesCount: 0,
+        droppedEventsCount: 0,
+        droppedLinksCount: 0,
       };
     });
 
     it('returns null on an empty list', () => {
-      assert.deepStrictEqual(createExportTraceServiceRequest([], true), { resourceSpans: [] });
+      assert.deepStrictEqual(
+        createExportTraceServiceRequest([], { useHex: true }),
+        {
+          resourceSpans: [],
+        }
+      );
     });
 
     it('serializes a span with useHex = true', () => {
-      const exportRequest = createExportTraceServiceRequest([span], true);
+      const exportRequest = createExportTraceServiceRequest([span], {
+        useHex: true,
+      });
       assert.ok(exportRequest);
-      assert.deepStrictEqual(exportRequest, createExpectedSpanJson(true));
+      assert.deepStrictEqual(
+        exportRequest,
+        createExpectedSpanJson({ useHex: true })
+      );
     });
 
     it('serializes a span with useHex = false', () => {
-      const exportRequest = createExportTraceServiceRequest([span], false);
+      const exportRequest = createExportTraceServiceRequest([span], {
+        useHex: false,
+      });
       assert.ok(exportRequest);
-      assert.deepStrictEqual(exportRequest, createExpectedSpanJson(false));
+      assert.deepStrictEqual(
+        exportRequest,
+        createExpectedSpanJson({ useHex: false })
+      );
+    });
+
+    it('serializes a span with string timestamps', () => {
+      const options: OtlpEncodingOptions = { useLongBits: false };
+      const exportRequest = createExportTraceServiceRequest([span], options);
+      assert.ok(exportRequest);
+      assert.deepStrictEqual(exportRequest, createExpectedSpanJson(options));
     });
 
     it('serializes a span without a parent with useHex = true', () => {
       (span as any).parentSpanId = undefined;
-      const exportRequest = createExportTraceServiceRequest([span], true);
+      const exportRequest = createExportTraceServiceRequest([span], {
+        useHex: true,
+      });
       assert.ok(exportRequest);
-      assert.strictEqual(exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].parentSpanId, undefined);
+      assert.strictEqual(
+        exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].parentSpanId,
+        undefined
+      );
     });
 
     it('serializes a span without a parent with useHex = false', () => {
       (span as any).parentSpanId = undefined;
-      const exportRequest = createExportTraceServiceRequest([span], false);
+      const exportRequest = createExportTraceServiceRequest([span], {
+        useHex: false,
+      });
       assert.ok(exportRequest);
-      assert.strictEqual(exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].parentSpanId, undefined);
+      assert.strictEqual(
+        exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].parentSpanId,
+        undefined
+      );
     });
 
     describe('status code', () => {
       it('error', () => {
         span.status.code = SpanStatusCode.ERROR;
         span.status.message = 'error message';
-        const exportRequest = createExportTraceServiceRequest([span], true);
+        const exportRequest = createExportTraceServiceRequest([span], {
+          useHex: true,
+        });
         assert.ok(exportRequest);
-        const spanStatus = exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].status;
+        const spanStatus =
+          exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].status;
         assert.strictEqual(spanStatus?.code, EStatusCode.STATUS_CODE_ERROR);
         assert.strictEqual(spanStatus?.message, 'error message');
       });
 
       it('unset', () => {
         span.status.code = SpanStatusCode.UNSET;
-        const exportRequest = createExportTraceServiceRequest([span], true);
+        const exportRequest = createExportTraceServiceRequest([span], {
+          useHex: true,
+        });
         assert.ok(exportRequest);
-        assert.strictEqual(exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].status.code, EStatusCode.STATUS_CODE_UNSET);
+        assert.strictEqual(
+          exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].status.code,
+          EStatusCode.STATUS_CODE_UNSET
+        );
       });
     });
 
     describe('span kind', () => {
       it('consumer', () => {
         (span as any).kind = SpanKind.CONSUMER;
-        const exportRequest = createExportTraceServiceRequest([span], true);
+        const exportRequest = createExportTraceServiceRequest([span], {
+          useHex: true,
+        });
         assert.ok(exportRequest);
-        assert.strictEqual(exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind, ESpanKind.SPAN_KIND_CONSUMER);
+        assert.strictEqual(
+          exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind,
+          ESpanKind.SPAN_KIND_CONSUMER
+        );
       });
       it('internal', () => {
         (span as any).kind = SpanKind.INTERNAL;
-        const exportRequest = createExportTraceServiceRequest([span], true);
+        const exportRequest = createExportTraceServiceRequest([span], {
+          useHex: true,
+        });
         assert.ok(exportRequest);
-        assert.strictEqual(exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind, ESpanKind.SPAN_KIND_INTERNAL);
+        assert.strictEqual(
+          exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind,
+          ESpanKind.SPAN_KIND_INTERNAL
+        );
       });
       it('producer', () => {
         (span as any).kind = SpanKind.PRODUCER;
-        const exportRequest = createExportTraceServiceRequest([span], true);
+        const exportRequest = createExportTraceServiceRequest([span], {
+          useHex: true,
+        });
         assert.ok(exportRequest);
-        assert.strictEqual(exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind, ESpanKind.SPAN_KIND_PRODUCER);
+        assert.strictEqual(
+          exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind,
+          ESpanKind.SPAN_KIND_PRODUCER
+        );
       });
       it('server', () => {
         (span as any).kind = SpanKind.SERVER;
-        const exportRequest = createExportTraceServiceRequest([span], true);
+        const exportRequest = createExportTraceServiceRequest([span], {
+          useHex: true,
+        });
         assert.ok(exportRequest);
-        assert.strictEqual(exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind, ESpanKind.SPAN_KIND_SERVER);
+        assert.strictEqual(
+          exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind,
+          ESpanKind.SPAN_KIND_SERVER
+        );
       });
       it('unspecified', () => {
         (span as any).kind = undefined;
-        const exportRequest = createExportTraceServiceRequest([span], true);
+        const exportRequest = createExportTraceServiceRequest([span], {
+          useHex: true,
+        });
         assert.ok(exportRequest);
-        assert.strictEqual(exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind, ESpanKind.SPAN_KIND_UNSPECIFIED);
+        assert.strictEqual(
+          exportRequest.resourceSpans?.[0].scopeSpans[0].spans?.[0].kind,
+          ESpanKind.SPAN_KIND_UNSPECIFIED
+        );
       });
     });
   });

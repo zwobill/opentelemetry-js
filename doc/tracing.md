@@ -1,12 +1,12 @@
 # Tracing
 
-This quick start is for end users of OpenTelemetry who wish to manually trace their applications. If you are a library author, please see the [Library Authors Guide](library-author.md). If you wish to automatically instrument your application, see the automatic instrumentation documentation for the SDK you wish to use.
+This quick start is for end users of OpenTelemetry who wish to manually trace their applications. If you wish to automatically instrument your application, see the automatic instrumentation documentation for the SDK you wish to use.
 
 For a high-level overview of OpenTelemetry tracing in general and definitions of some common terms, you can refer to the [OpenTelemetry Specification Overview][spec-overview]
 
 _Trace API Specification: <https://github.com/open-telemetry/opentelemetry-specification/blob/v1.6.0/specification/trace/api.md>_
 
-_Trace API Reference: <https://open-telemetry.github.io/opentelemetry-js-api/classes/traceapi.html>_
+_Trace API Reference: <https://open-telemetry.github.io/opentelemetry-js/classes/_opentelemetry_api.TraceAPI.html>_
 
 - [Acquiring a Tracer](#acquiring-a-tracer)
 - [Starting and Ending a Span](#starting-and-ending-a-span)
@@ -23,7 +23,7 @@ _Trace API Reference: <https://open-telemetry.github.io/opentelemetry-js-api/cla
 
 ## Acquiring a Tracer
 
-In OpenTelemetry, tracing operations are performed using methods on a _tracer_. You can get a tracer by calling [`getTracer`](https://open-telemetry.github.io/opentelemetry-js-api/classes/traceapi.html#gettracer) on the global tracer provider. `getTracer` takes the name and version of the application or library acquiring the tracer, and provides a tracer which can be used to trace operations.
+In OpenTelemetry, tracing operations are performed using methods on a _tracer_. You can get a tracer by calling [`getTracer`](https://open-telemetry.github.io/opentelemetry-js/classes/_opentelemetry_api.TraceAPI.html#getTracer) on the global tracer provider. `getTracer` takes the name and version of the application or library acquiring the tracer, and provides a tracer which can be used to trace operations.
 
 ```typescript
 import { trace } from '@opentelemetry/api';
@@ -33,9 +33,9 @@ const tracer = trace.getTracer("my-application", "0.1.0");
 
 ## Starting and Ending a Span
 
-In OpenTelemetry, all _traces_ are composed of [`Spans`](https://open-telemetry.github.io/opentelemetry-js-api/interfaces/span.html). A span describes a single operation with a start time and and end time like a database request, outgoing remote request, or a function invocation. These spans are linked together by parent-child relationships to form a tree. The resultant tree is your trace, and the root of the tree is commonly called the _root span_.
+In OpenTelemetry, all _traces_ are composed of [`Spans`](https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.Span.html). A span describes a single operation with a start time and and end time like a database request, outgoing remote request, or a function invocation. These spans are linked together by parent-child relationships to form a tree. The resultant tree is your trace, and the root of the tree is commonly called the _root span_.
 
-You can create a span by calling [`Tracer#startSpan`](https://open-telemetry.github.io/opentelemetry-js-api/interfaces/tracer.html#startspan). The only required argument to `startSpan` is the _span name_, which should describe the operation being performed with low cardinality.
+You can create a span by calling [`Tracer#startSpan`](https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.Tracer.html#startSpan). The only required argument to `startSpan` is the _span name_, which should describe the operation being performed with low cardinality.
 
 ```typescript
 const span = tracer.startSpan("my-span-name");
@@ -76,10 +76,10 @@ server.on("GET", "/user/:id", onGet);
 
 ## Describing a Span
 
-Using span relationships, attributes, kind, and the related [semantic conventions](https://github.com/open-telemetry/opentelemetry-specification/tree/main/specification/trace/semantic_conventions), we can more accurately describe the span in a way our tracing backend will more easily understand. The following example uses these mechanisms, which are described below.
+Using span relationships, attributes, kind, and the related [semantic conventions](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/general/trace.md), we can more accurately describe the span in a way our tracing backend will more easily understand. The following example uses these mechanisms, which are described below.
 
 ```typescript
-import { NetTransportValues SemanticAttributes } from '@opentelemetry/semantic-conventions';
+import { NetTransportValues, SemanticAttributes } from '@opentelemetry/semantic-conventions';
 import { trace, context, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
 async function onGet(request, response) {
@@ -209,6 +209,6 @@ Consumer spans represent the processing of a job created by a producer and may s
 
 One problem with span names and attributes is recognizing, categorizing, and analyzing them in your tracing backend. Between different applications, libraries, and tracing backends there might be different names and expected values for various attributes. For example, your application may use `http.status` to describe the HTTP status code, but a library you use may use `http.status_code`. In order to solve this problem, OpenTelemetry uses a library of semantic conventions which describe the name and attributes which should be used for specific types of spans. The use of semantic conventions is always recommended where applicable, but they are merely conventions. For example, you may find that some name other than the name suggested by the semantic conventions more accurately describes your span, you may decide not to include a span attribute which is suggested by semantic conventions for privacy reasons, or you may wish to add a custom attribute which isn't covered by semantic conventions. All of these cases are fine, but please keep in mind that if you stray from the semantic conventions, the categorization of spans in your tracing backend may be affected.
 
-_See the current trace semantic conventions in the OpenTelemetry Specification repository: <https://github.com/open-telemetry/opentelemetry-specification/tree/main/specification/trace/semantic_conventions>_
+_See the current trace semantic conventions in the OpenTelemetry Specification repository: <https://github.com/open-telemetry/semantic-conventions/blob/main/docs/general/trace.md>_
 
 [spec-overview]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/overview.md

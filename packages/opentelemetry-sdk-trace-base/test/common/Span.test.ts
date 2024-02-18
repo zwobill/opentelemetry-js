@@ -15,6 +15,7 @@
  */
 
 import {
+  diag,
   SpanStatusCode,
   Exception,
   ROOT_CONTEXT,
@@ -43,7 +44,8 @@ const performanceTimeOrigin: HrTime = [1, 1];
 
 describe('Span', () => {
   beforeEach(() => {
-    sinon.stub(performance, 'timeOrigin')
+    sinon
+      .stub(performance, 'timeOrigin')
       .value(hrTimeToMilliseconds(performanceTimeOrigin));
   });
   afterEach(() => {
@@ -66,7 +68,7 @@ describe('Span', () => {
   const linkContext: SpanContext = {
     traceId: 'e4cda95b652f4a1592b449d5929fda1b',
     spanId: '7e0c63257de34c92',
-    traceFlags: TraceFlags.SAMPLED
+    traceFlags: TraceFlags.SAMPLED,
   };
 
   it('should create a Span instance', () => {
@@ -136,6 +138,8 @@ describe('Span', () => {
       spanContext,
       SpanKind.SERVER
     );
+    // @ts-expect-error writing readonly property. performance time origin is mocked to return ms value of [1,1]
+    span['_performanceOffset'] = 0;
     span.end(hrTimeToMilliseconds(span.startTime) - 1);
     assert.ok(hrTimeToNanoseconds(span.duration) >= 0);
   });
@@ -156,6 +160,7 @@ describe('Span', () => {
   });
 
   it('should have an entered time for event', () => {
+    const startTime = Date.now();
     const span = new Span(
       tracer,
       ROOT_CONTEXT,
@@ -164,11 +169,11 @@ describe('Span', () => {
       SpanKind.SERVER,
       undefined,
       [],
-      0
+      startTime
     );
-    const timeMS = 123;
+    const eventTimeMS = 123;
     const spanStartTime = hrTimeToMilliseconds(span.startTime);
-    const eventTime = spanStartTime + timeMS;
+    const eventTime = spanStartTime + eventTimeMS;
 
     span.addEvent('my-event', undefined, eventTime);
 
@@ -178,6 +183,7 @@ describe('Span', () => {
 
   describe('when 2nd param is "TimeInput" type', () => {
     it('should have an entered time for event - ', () => {
+      const startTime = Date.now();
       const span = new Span(
         tracer,
         ROOT_CONTEXT,
@@ -186,11 +192,11 @@ describe('Span', () => {
         SpanKind.SERVER,
         undefined,
         [],
-        0
+        startTime
       );
-      const timeMS = 123;
+      const eventTimeMS = 123;
       const spanStartTime = hrTimeToMilliseconds(span.startTime);
-      const eventTime = spanStartTime + timeMS;
+      const eventTime = spanStartTime + eventTimeMS;
 
       span.addEvent('my-event', eventTime);
 
@@ -307,6 +313,10 @@ describe('Span', () => {
           assert.strictEqual(span.attributes['foo99'], 'bar99');
           assert.strictEqual(span.attributes['foo149'], undefined);
         });
+
+        it('should store the count of dropped attributes in droppedAttributesCount', () => {
+          assert.strictEqual(span.droppedAttributesCount, 50);
+        });
       });
 
       describe('when "attributeValueLengthLimit" option defined', () => {
@@ -331,10 +341,23 @@ describe('Span', () => {
         });
 
         it('should truncate value of arrays which exceeds this limit', () => {
-          span.setAttribute('attr-array-of-strings', ['abcdefgh', 'abc', 'abcde', '']);
+          span.setAttribute('attr-array-of-strings', [
+            'abcdefgh',
+            'abc',
+            'abcde',
+            '',
+          ]);
           span.setAttribute('attr-array-of-bool', [true, false]);
-          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], ['abcde', 'abc', 'abcde', '']);
-          assert.deepStrictEqual(span.attributes['attr-array-of-bool'], [true, false]);
+          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], [
+            'abcde',
+            'abc',
+            'abcde',
+            '',
+          ]);
+          assert.deepStrictEqual(span.attributes['attr-array-of-bool'], [
+            true,
+            false,
+          ]);
         });
 
         it('should not truncate value which length not exceeds this limit', () => {
@@ -345,6 +368,22 @@ describe('Span', () => {
         it('should return same value for non-string values', () => {
           span.setAttribute('attr-non-string', true);
           assert.strictEqual(span.attributes['attr-non-string'], true);
+        });
+
+        it('should truncate value when attributes are passed to the constructor', () => {
+          const span = new Span(
+            tracer,
+            ROOT_CONTEXT,
+            name,
+            spanContext,
+            SpanKind.CLIENT,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            { 'attr-with-more-length': 'abcdefgh' }
+          );
+          assert.strictEqual(span.attributes['attr-with-more-length'], 'abcde');
         });
       });
 
@@ -366,9 +405,20 @@ describe('Span', () => {
 
         it('should not truncate any value', () => {
           span.setAttribute('attr-not-truncate', 'abcdefgh');
-          span.setAttribute('attr-array-of-strings', ['abcdefgh', 'abc', 'abcde']);
-          assert.deepStrictEqual(span.attributes['attr-not-truncate'], 'abcdefgh');
-          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], ['abcdefgh', 'abc', 'abcde']);
+          span.setAttribute('attr-array-of-strings', [
+            'abcdefgh',
+            'abc',
+            'abcde',
+          ]);
+          assert.deepStrictEqual(
+            span.attributes['attr-not-truncate'],
+            'abcdefgh'
+          );
+          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], [
+            'abcdefgh',
+            'abc',
+            'abcde',
+          ]);
         });
       });
     });
@@ -424,10 +474,23 @@ describe('Span', () => {
         });
 
         it('should truncate value of arrays which exceeds this limit', () => {
-          span.setAttribute('attr-array-of-strings', ['abcdefgh', 'abc', 'abcde', '']);
+          span.setAttribute('attr-array-of-strings', [
+            'abcdefgh',
+            'abc',
+            'abcde',
+            '',
+          ]);
           span.setAttribute('attr-array-of-bool', [true, false]);
-          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], ['abcde', 'abc', 'abcde', '']);
-          assert.deepStrictEqual(span.attributes['attr-array-of-bool'], [true, false]);
+          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], [
+            'abcde',
+            'abc',
+            'abcde',
+            '',
+          ]);
+          assert.deepStrictEqual(span.attributes['attr-array-of-bool'], [
+            true,
+            false,
+          ]);
         });
 
         it('should not truncate value which length not exceeds this limit', () => {
@@ -459,9 +522,20 @@ describe('Span', () => {
 
         it('should not truncate any value', () => {
           span.setAttribute('attr-not-truncate', 'abcdefgh');
-          span.setAttribute('attr-array-of-strings', ['abcdefgh', 'abc', 'abcde']);
-          assert.deepStrictEqual(span.attributes['attr-not-truncate'], 'abcdefgh');
-          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], ['abcdefgh', 'abc', 'abcde']);
+          span.setAttribute('attr-array-of-strings', [
+            'abcdefgh',
+            'abc',
+            'abcde',
+          ]);
+          assert.deepStrictEqual(
+            span.attributes['attr-not-truncate'],
+            'abcdefgh'
+          );
+          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], [
+            'abcdefgh',
+            'abc',
+            'abcde',
+          ]);
         });
       });
     });
@@ -475,7 +549,7 @@ describe('Span', () => {
           },
           spanLimits: {
             attributeCountLimit: 5,
-          }
+          },
         }).getTracer('default');
 
         const span = new Span(
@@ -507,7 +581,7 @@ describe('Span', () => {
           },
           spanLimits: {
             attributeCountLimit: DEFAULT_ATTRIBUTE_COUNT_LIMIT,
-          }
+          },
         }).getTracer('default');
 
         const span = new Span(
@@ -523,7 +597,10 @@ describe('Span', () => {
         span.end();
 
         it('should remove / drop all remaining values after the number of values exceeds the span limit', () => {
-          assert.strictEqual(Object.keys(span.attributes).length, DEFAULT_ATTRIBUTE_COUNT_LIMIT);
+          assert.strictEqual(
+            Object.keys(span.attributes).length,
+            DEFAULT_ATTRIBUTE_COUNT_LIMIT
+          );
           assert.strictEqual(span.attributes['foo0'], 'bar0');
           assert.strictEqual(span.attributes['foo10'], 'bar10');
           assert.strictEqual(span.attributes['foo127'], 'bar127');
@@ -557,10 +634,23 @@ describe('Span', () => {
         });
 
         it('should truncate value of arrays which exceeds span limit', () => {
-          span.setAttribute('attr-array-of-strings', ['abcdefgh', 'abc', 'abcde', '']);
+          span.setAttribute('attr-array-of-strings', [
+            'abcdefgh',
+            'abc',
+            'abcde',
+            '',
+          ]);
           span.setAttribute('attr-array-of-bool', [true, false]);
-          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], ['abcde', 'abc', 'abcde', '']);
-          assert.deepStrictEqual(span.attributes['attr-array-of-bool'], [true, false]);
+          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], [
+            'abcde',
+            'abc',
+            'abcde',
+            '',
+          ]);
+          assert.deepStrictEqual(span.attributes['attr-array-of-bool'], [
+            true,
+            false,
+          ]);
         });
 
         it('should not truncate value which length not exceeds span limit', () => {
@@ -596,14 +686,30 @@ describe('Span', () => {
 
         it('should not truncate value', () => {
           span.setAttribute('attr-with-more-length', 'abcdefghijklmn');
-          assert.strictEqual(span.attributes['attr-with-more-length'], 'abcdefghijklmn');
+          assert.strictEqual(
+            span.attributes['attr-with-more-length'],
+            'abcdefghijklmn'
+          );
         });
 
         it('should not truncate value of arrays', () => {
-          span.setAttribute('attr-array-of-strings', ['abcdefghijklmn', 'abc', 'abcde', '']);
+          span.setAttribute('attr-array-of-strings', [
+            'abcdefghijklmn',
+            'abc',
+            'abcde',
+            '',
+          ]);
           span.setAttribute('attr-array-of-bool', [true, false]);
-          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], ['abcdefghijklmn', 'abc', 'abcde', '']);
-          assert.deepStrictEqual(span.attributes['attr-array-of-bool'], [true, false]);
+          assert.deepStrictEqual(span.attributes['attr-array-of-strings'], [
+            'abcdefghijklmn',
+            'abc',
+            'abcde',
+            '',
+          ]);
+          assert.deepStrictEqual(span.attributes['attr-array-of-bool'], [
+            true,
+            false,
+          ]);
         });
 
         it('should return same value for non-string values', () => {
@@ -653,7 +759,10 @@ describe('Span', () => {
         spanContext,
         SpanKind.CLIENT
       );
-      span.addEvent('rev', { ...validAttributes, ...invalidAttributes } as unknown as SpanAttributes);
+      span.addEvent('rev', {
+        ...validAttributes,
+        ...invalidAttributes,
+      } as unknown as SpanAttributes);
       span.end();
 
       assert.strictEqual(span.events.length, 1);
@@ -671,7 +780,7 @@ describe('Span', () => {
     const linkContext: SpanContext = {
       traceId: 'b3cda95b652f4a1592b449d5929fda1b',
       spanId: '6e0c63257de34c92',
-      traceFlags: TraceFlags.SAMPLED
+      traceFlags: TraceFlags.SAMPLED,
     };
     const attributes = { attr1: 'value', attr2: 123, attr3: true };
     const span = new Span(
@@ -694,6 +803,10 @@ describe('Span', () => {
       spanContext,
       SpanKind.CLIENT
     );
+
+    const debugStub = sinon.spy(diag, 'debug');
+    const warnStub = sinon.spy(diag, 'warn');
+
     for (let i = 0; i < 150; i++) {
       span.addEvent('sent' + i);
     }
@@ -701,6 +814,28 @@ describe('Span', () => {
 
     assert.strictEqual(span.events.length, 100);
     assert.strictEqual(span.events[span.events.length - 1].name, 'sent149');
+
+    sinon.assert.calledOnceWithExactly(debugStub, 'Dropping extra events.');
+    sinon.assert.calledOnceWithExactly(
+      warnStub,
+      'Dropped 50 events because eventCountLimit reached'
+    );
+  });
+
+  it('should store the count of dropped events in droppedEventsCount', () => {
+    const span = new Span(
+      tracer,
+      ROOT_CONTEXT,
+      name,
+      spanContext,
+      SpanKind.CLIENT
+    );
+    for (let i = 0; i < 150; i++) {
+      span.addEvent('sent' + i);
+    }
+    span.end();
+
+    assert.strictEqual(span.droppedEventsCount, 50);
   });
 
   it('should add no event', () => {
@@ -946,6 +1081,27 @@ describe('Span', () => {
       assert.ok(started);
     });
 
+    it('should include attributes in onStart', () => {
+      let attributes;
+      const processor: SpanProcessor = {
+        onStart: span => {
+          attributes = { ...span.attributes };
+        },
+        forceFlush: () => Promise.resolve(),
+        onEnd() {},
+        shutdown: () => Promise.resolve(),
+      };
+
+      const provider = new BasicTracerProvider();
+
+      provider.addSpanProcessor(processor);
+
+      provider
+        .getTracer('default')
+        .startSpan('test', { attributes: { foo: 'bar' } });
+      assert.deepStrictEqual(attributes, { foo: 'bar' });
+    });
+
     it('should call onEnd synchronously when span is ended', () => {
       let ended = false;
       const processor: SpanProcessor = {
@@ -1088,6 +1244,8 @@ describe('Span', () => {
           spanContext,
           SpanKind.CLIENT
         );
+        // @ts-expect-error writing readonly property. performance time origin is mocked to return ms value of [1,1]
+        span['_performanceOffset'] = 0;
         assert.strictEqual(span.events.length, 0);
         span.recordException('boom', [0, 123]);
         const event = span.events[0];
@@ -1110,6 +1268,24 @@ describe('Span', () => {
         assert.deepStrictEqual(event.attributes, {
           [SemanticAttributes.EXCEPTION_TYPE]: '12',
         });
+      });
+    });
+
+    describe('when attributes are specified', () => {
+      it('should store specified attributes', () => {
+        const span = new Span(
+          tracer,
+          ROOT_CONTEXT,
+          name,
+          spanContext,
+          SpanKind.CLIENT,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          { foo: 'bar' }
+        );
+        assert.deepStrictEqual(span.attributes, { foo: 'bar' });
       });
     });
   });

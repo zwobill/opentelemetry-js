@@ -15,7 +15,12 @@
  */
 
 import { diag } from '@opentelemetry/api';
-import { Detector, Resource, ResourceDetectionConfig } from '@opentelemetry/resources';
+import {
+  Detector,
+  IResource,
+  Resource,
+  ResourceDetectionConfig,
+} from '@opentelemetry/resources';
 import { ResourceAttributes } from '@opentelemetry/resources';
 import { BROWSER_ATTRIBUTES, UserAgentData } from './types';
 
@@ -23,7 +28,7 @@ import { BROWSER_ATTRIBUTES, UserAgentData } from './types';
  * BrowserDetector will be used to detect the resources related to browser.
  */
 class BrowserDetector implements Detector {
-  async detect(config?: ResourceDetectionConfig): Promise<Resource> {
+  async detect(config?: ResourceDetectionConfig): Promise<IResource> {
     const isBrowser = typeof navigator !== 'undefined';
     if (!isBrowser) {
       return Resource.empty();
@@ -43,7 +48,8 @@ class BrowserDetector implements Detector {
     _config?: ResourceDetectionConfig
   ) {
     if (
-      !browserResource[BROWSER_ATTRIBUTES.USER_AGENT] && !browserResource[BROWSER_ATTRIBUTES.PLATFORM]
+      !browserResource[BROWSER_ATTRIBUTES.USER_AGENT] &&
+      !browserResource[BROWSER_ATTRIBUTES.PLATFORM]
     ) {
       diag.debug(
         'BrowserDetector failed: Unable to find required browser resources. '
@@ -57,18 +63,20 @@ class BrowserDetector implements Detector {
 
 // Add Browser related attributes to resources
 function getBrowserAttributes(): ResourceAttributes {
-  const browserAttribs : ResourceAttributes = {};
-  const userAgentData : UserAgentData | undefined = (navigator as any).userAgentData;
+  const browserAttribs: ResourceAttributes = {};
+  const userAgentData: UserAgentData | undefined = (navigator as any)
+    .userAgentData;
   if (userAgentData) {
     browserAttribs[BROWSER_ATTRIBUTES.PLATFORM] = userAgentData.platform;
-    browserAttribs[BROWSER_ATTRIBUTES.BRANDS] = userAgentData.brands.map(b => `${b.brand} ${b.version}`);
+    browserAttribs[BROWSER_ATTRIBUTES.BRANDS] = userAgentData.brands.map(
+      b => `${b.brand} ${b.version}`
+    );
     browserAttribs[BROWSER_ATTRIBUTES.MOBILE] = userAgentData.mobile;
   } else {
     browserAttribs[BROWSER_ATTRIBUTES.USER_AGENT] = navigator.userAgent;
   }
-  browserAttribs[BROWSER_ATTRIBUTES.LANGUAGE]=navigator.language;
+  browserAttribs[BROWSER_ATTRIBUTES.LANGUAGE] = navigator.language;
   return browserAttribs;
 }
-
 
 export const browserDetector = new BrowserDetector();

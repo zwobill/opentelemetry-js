@@ -15,20 +15,13 @@
  */
 
 import { diag } from '@opentelemetry/api';
-import {
-  globalErrorHandler,
-} from '@opentelemetry/core';
+import { globalErrorHandler } from '@opentelemetry/core';
 import {
   Aggregation,
   AggregationTemporality,
-  MetricReader
+  MetricReader,
 } from '@opentelemetry/sdk-metrics';
-import {
-  createServer,
-  IncomingMessage,
-  Server,
-  ServerResponse
-} from 'http';
+import { createServer, IncomingMessage, Server, ServerResponse } from 'http';
 import { ExporterConfig } from './export/types';
 import { PrometheusSerializer } from './PrometheusSerializer';
 /** Node.js v8.x compat */
@@ -40,7 +33,7 @@ export class PrometheusExporter extends MetricReader {
     port: 9464,
     endpoint: '/metrics',
     prefix: '',
-    appendTimestamp: true,
+    appendTimestamp: false,
   };
 
   private readonly _host?: string;
@@ -51,6 +44,7 @@ export class PrometheusExporter extends MetricReader {
   private readonly _prefix?: string;
   private readonly _appendTimestamp: boolean;
   private _serializer: PrometheusSerializer;
+  private _startServerPromise: Promise<void> | undefined;
 
   // This will be required when histogram is implemented. Leaving here so it is not forgotten
   // Histogram cannot have a attribute named 'le'
@@ -61,10 +55,15 @@ export class PrometheusExporter extends MetricReader {
    * @param config Exporter configuration
    * @param callback Callback to be called after a server was started
    */
-  constructor(config: ExporterConfig = {}, callback?: () => void) {
+  constructor(
+    config: ExporterConfig = {},
+    callback: (error: Error | void) => void = () => {}
+  ) {
     super({
       aggregationSelector: _instrumentType => Aggregation.Default(),
-      aggregationTemporalitySelector: _instrumentType => AggregationTemporality.CUMULATIVE
+      aggregationTemporalitySelector: _instrumentType =>
+        AggregationTemporality.CUMULATIVE,
+      metricProducers: config.metricProducers,
     });
     this._host =
       config.host ||
@@ -92,11 +91,13 @@ export class PrometheusExporter extends MetricReader {
     ).replace(/^([^/])/, '/$1');
 
     if (config.preventServerStart !== true) {
-      this.startServer()
-        .then(callback)
-        .catch(err => diag.error(err));
+      this.startServer().then(callback, err => {
+        diag.error(err);
+        callback(err);
+      });
     } else if (callback) {
-      callback();
+      // Do not invoke callback immediately to avoid zalgo problem.
+      queueMicrotask(callback);
     }
   }
 
@@ -127,7 +128,7 @@ export class PrometheusExporter extends MetricReader {
             diag.debug('Prometheus exporter was stopped');
           } else {
             if (
-              ((err as unknown) as { code: string }).code !==
+              (err as unknown as { code: string }).code !==
               'ERR_SERVER_NOT_RUNNING'
             ) {
               globalErrorHandler(err);
@@ -143,7 +144,8 @@ export class PrometheusExporter extends MetricReader {
    * Starts the Prometheus export server
    */
   startServer(): Promise<void> {
-    return new Promise(resolve => {
+    this._startServerPromise ??= new Promise((resolve, reject) => {
+      this._server.once('error', reject);
       this._server.listen(
         {
           port: this._port,
@@ -157,12 +159,14 @@ export class PrometheusExporter extends MetricReader {
         }
       );
     });
+
+    return this._startServerPromise;
   }
 
   /**
    * Request handler that responds with the current state of metrics
    * @param _request Incoming HTTP request of server instance
-   * @param response HTTP response objet used to response to request
+   * @param response HTTP response object used to response to request
    */
   public getMetricsRequestHandler(
     _request: IncomingMessage,
@@ -182,7 +186,10 @@ export class PrometheusExporter extends MetricReader {
     request: IncomingMessage,
     response: ServerResponse
   ) => {
-    if (request.url != null && new URL(request.url, this._baseUrl).pathname === this._endpoint) {
+    if (
+      request.url != null &&
+      new URL(request.url, this._baseUrl).pathname === this._endpoint
+    ) {
       this._exportMetrics(response);
     } else {
       this._notFound(response);
@@ -195,19 +202,21 @@ export class PrometheusExporter extends MetricReader {
   private _exportMetrics = (response: ServerResponse) => {
     response.statusCode = 200;
     response.setHeader('content-type', 'text/plain');
-    this.collect()
-      .then(
-        collectionResult => {
-          const { resourceMetrics, errors } = collectionResult;
-          if (errors.length) {
-            diag.error('PrometheusExporter: metrics collection errors', ...errors);
-          }
-          response.end(this._serializer.serialize(resourceMetrics));
-        },
-        err => {
-          response.end(`# failed to export metrics: ${err}`);
+    this.collect().then(
+      collectionResult => {
+        const { resourceMetrics, errors } = collectionResult;
+        if (errors.length) {
+          diag.error(
+            'PrometheusExporter: metrics collection errors',
+            ...errors
+          );
         }
-      );
+        response.end(this._serializer.serialize(resourceMetrics));
+      },
+      err => {
+        response.end(`# failed to export metrics: ${err}`);
+      }
+    );
   };
 
   /**

@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {Suite} from 'mocha';
+import { Suite } from 'mocha';
 import * as assert from 'assert';
-import {BROWSER_ATTRIBUTES} from '../src/types';
-import {Resource} from '@opentelemetry/resources';
+import { BROWSER_ATTRIBUTES } from '../src/types';
+import { IResource } from '@opentelemetry/resources';
 
 export function describeBrowser(title: string, fn: (this: Suite) => void) {
   title = `Browser: ${title}`;
@@ -27,13 +27,13 @@ export function describeBrowser(title: string, fn: (this: Suite) => void) {
 }
 
 export const assertResource = (
-  resource: Resource,
+  resource: IResource,
   validations: {
-    platform?: string,
-    brands?: string[],
-    mobile?: boolean,
-    language?: string,
-    user_agent?: string
+    platform?: string;
+    brands?: string[];
+    mobile?: boolean;
+    language?: string;
+    user_agent?: string;
   }
 ) => {
   if (validations.platform) {
@@ -45,25 +45,25 @@ export const assertResource = (
   if (validations.brands) {
     assert.ok(Array.isArray(resource.attributes[BROWSER_ATTRIBUTES.BRANDS]));
     assert.deepStrictEqual(
-      (resource.attributes[BROWSER_ATTRIBUTES.BRANDS] as string[]),
+      resource.attributes[BROWSER_ATTRIBUTES.BRANDS] as string[],
       validations.brands
     );
   }
   if (validations.mobile) {
     assert.strictEqual(
-      (resource.attributes[BROWSER_ATTRIBUTES.MOBILE]),
+      resource.attributes[BROWSER_ATTRIBUTES.MOBILE],
       validations.mobile
     );
   }
   if (validations.language) {
     assert.strictEqual(
-      (resource.attributes[BROWSER_ATTRIBUTES.LANGUAGE]),
+      resource.attributes[BROWSER_ATTRIBUTES.LANGUAGE],
       validations.language
     );
   }
   if (validations.user_agent) {
     assert.strictEqual(
-      (resource.attributes[BROWSER_ATTRIBUTES.USER_AGENT]),
+      resource.attributes[BROWSER_ATTRIBUTES.USER_AGENT],
       validations.user_agent
     );
   }
@@ -74,6 +74,6 @@ export const assertResource = (
  *
  * @param resource the Resource to validate
  */
-export const assertEmptyResource = (resource: Resource) => {
+export const assertEmptyResource = (resource: IResource) => {
   assert.strictEqual(Object.keys(resource.attributes).length, 0);
 };

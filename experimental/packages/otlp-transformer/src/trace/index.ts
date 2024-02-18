@@ -13,20 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import type { Resource } from '@opentelemetry/resources';
+import type { IResource } from '@opentelemetry/resources';
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-base';
+import type { OtlpEncodingOptions } from '../common/types';
 import { toAttributes } from '../common/internal';
 import { sdkSpanToOtlpSpan } from './internal';
-import { IExportTraceServiceRequest, IResourceSpans, IScopeSpans } from './types';
+import {
+  IExportTraceServiceRequest,
+  IResourceSpans,
+  IScopeSpans,
+} from './types';
+import { Encoder, getOtlpEncoder } from '../common';
 
-export function createExportTraceServiceRequest(spans: ReadableSpan[], useHex?: boolean): IExportTraceServiceRequest {
+export function createExportTraceServiceRequest(
+  spans: ReadableSpan[],
+  options?: OtlpEncodingOptions
+): IExportTraceServiceRequest {
+  const encoder = getOtlpEncoder(options);
   return {
-    resourceSpans: spanRecordsToResourceSpans(spans, useHex)
+    resourceSpans: spanRecordsToResourceSpans(spans, encoder),
   };
 }
 
 function createResourceMap(readableSpans: ReadableSpan[]) {
-  const resourceMap: Map<Resource, Map<string, ReadableSpan[]>> = new Map();
+  const resourceMap: Map<IResource, Map<string, ReadableSpan[]>> = new Map();
   for (const record of readableSpans) {
     let ilmMap = resourceMap.get(record.resource);
 
@@ -36,7 +46,9 @@ function createResourceMap(readableSpans: ReadableSpan[]) {
     }
 
     // TODO this is duplicated in basic tracer. Consolidate on a common helper in core
-    const instrumentationLibraryKey = `${record.instrumentationLibrary.name}@${record.instrumentationLibrary.version || ''}:${record.instrumentationLibrary.schemaUrl || ''}`;
+    const instrumentationLibraryKey = `${record.instrumentationLibrary.name}@${
+      record.instrumentationLibrary.version || ''
+    }:${record.instrumentationLibrary.schemaUrl || ''}`;
     let records = ilmMap.get(instrumentationLibraryKey);
 
     if (!records) {
@@ -50,7 +62,10 @@ function createResourceMap(readableSpans: ReadableSpan[]) {
   return resourceMap;
 }
 
-function spanRecordsToResourceSpans(readableSpans: ReadableSpan[], useHex?: boolean): IResourceSpans[] {
+function spanRecordsToResourceSpans(
+  readableSpans: ReadableSpan[],
+  encoder: Encoder
+): IResourceSpans[] {
   const resourceMap = createResourceMap(readableSpans);
   const out: IResourceSpans[] = [];
 
@@ -64,13 +79,16 @@ function spanRecordsToResourceSpans(readableSpans: ReadableSpan[], useHex?: bool
     while (!ilmEntry.done) {
       const scopeSpans = ilmEntry.value;
       if (scopeSpans.length > 0) {
-        const { name, version, schemaUrl } = scopeSpans[0].instrumentationLibrary;
-        const spans = scopeSpans.map(readableSpan => sdkSpanToOtlpSpan(readableSpan, useHex));
+        const { name, version, schemaUrl } =
+          scopeSpans[0].instrumentationLibrary;
+        const spans = scopeSpans.map(readableSpan =>
+          sdkSpanToOtlpSpan(readableSpan, encoder)
+        );
 
         scopeResourceSpans.push({
           scope: { name, version },
           spans: spans,
-          schemaUrl: schemaUrl
+          schemaUrl: schemaUrl,
         });
       }
       ilmEntry = ilmIterator.next();
@@ -82,7 +100,7 @@ function spanRecordsToResourceSpans(readableSpans: ReadableSpan[], useHex?: bool
         droppedAttributesCount: 0,
       },
       scopeSpans: scopeResourceSpans,
-      schemaUrl: undefined
+      schemaUrl: undefined,
     };
 
     out.push(transformedSpans);

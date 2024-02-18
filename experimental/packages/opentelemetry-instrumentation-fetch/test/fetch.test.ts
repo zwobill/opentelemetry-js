@@ -49,6 +49,10 @@ class DummySpanExporter implements tracing.SpanExporter {
   shutdown() {
     return Promise.resolve();
   }
+
+  forceFlush(): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 const getData = (url: string, method?: string) => {
@@ -135,6 +139,19 @@ function createFakePerformanceObs(url: string) {
   return FakePerfObs;
 }
 
+function testForCorrectEvents(
+  events: tracing.TimedEvent[],
+  eventNames: string[]
+) {
+  for (let i = 0; i < events.length; i++) {
+    assert.strictEqual(
+      events[i].name,
+      eventNames[i],
+      `event ${eventNames[i]} is not defined`
+    );
+  }
+}
+
 describe('fetch', () => {
   let contextManager: ZoneContextManager;
   let lastResponse: any | undefined;
@@ -148,6 +165,7 @@ describe('fetch', () => {
   let fetchInstrumentation: FetchInstrumentation;
 
   const url = 'http://localhost:8090/get';
+  const secureUrl = 'https://localhost:8090/get';
   const badUrl = 'http://foo.bar.com/get';
 
   const clearData = () => {
@@ -184,7 +202,10 @@ describe('fetch', () => {
           response.status = 405;
           response.statusText = 'OK';
           resolve(new window.Response('foo', response));
-        } else if ((input instanceof Request && input.url === url) || input === url) {
+        } else if (
+          (input instanceof Request && input.url === url) ||
+          input === url
+        ) {
           response.status = 200;
           response.statusText = 'OK';
           resolve(new window.Response(JSON.stringify(response), response));
@@ -241,39 +262,46 @@ describe('fetch', () => {
     // this process is scheduled at the same time the fetch promise is resolved
     // due to this we can't rely on getData resolution to know that the span has ended
     let resolveEndSpan: (value: unknown) => void;
-    const spanEnded = new Promise(r => resolveEndSpan = r);
-    const readSpy = sinon.spy(window.ReadableStreamDefaultReader.prototype, 'read');
-    const endSpanStub: sinon.SinonStub<any> = sinon.stub(FetchInstrumentation.prototype, '_endSpan' as any)
+    const spanEnded = new Promise(r => (resolveEndSpan = r));
+    const readSpy = sinon.spy(
+      window.ReadableStreamDefaultReader.prototype,
+      'read'
+    );
+    const endSpanStub: sinon.SinonStub<any> = sinon
+      .stub(FetchInstrumentation.prototype, '_endSpan' as any)
       .callsFake(async function (this: FetchInstrumentation, ...args: any[]) {
         resolveEndSpan({});
         return endSpanStub.wrappedMethod.apply(this, args);
       });
 
     rootSpan = webTracerWithZone.startSpan('root');
-    await api.context.with(api.trace.setSpan(api.context.active(), rootSpan), async () => {
-      fakeNow = 0;
-      try {
-        const responsePromise = getData(fileUrl, method);
-        fakeNow = 300;
-        const response = await responsePromise;
+    await api.context.with(
+      api.trace.setSpan(api.context.active(), rootSpan),
+      async () => {
+        fakeNow = 0;
+        try {
+          const responsePromise = getData(fileUrl, method);
+          fakeNow = 300;
+          const response = await responsePromise;
 
-        // if the url is not ignored, body.read should be called by now
-        // awaiting for the span to end
-        if (readSpy.callCount > 0) await spanEnded;
+          // if the url is not ignored, body.read should be called by now
+          // awaiting for the span to end
+          if (readSpy.callCount > 0) await spanEnded;
 
-        // this is a bit tricky as the only way to get all request headers from
-        // fetch is to use json()
-        lastResponse = await response.json();
-        const headers: { [key: string]: string } = {};
-        Object.keys(lastResponse.headers).forEach(key => {
-          headers[key.toLowerCase()] = lastResponse.headers[key];
-        });
-        lastResponse.headers = headers;
-      } catch (e) {
-        lastResponse = undefined;
+          // this is a bit tricky as the only way to get all request headers from
+          // fetch is to use json()
+          lastResponse = await response.json();
+          const headers: { [key: string]: string } = {};
+          Object.keys(lastResponse.headers).forEach(key => {
+            headers[key.toLowerCase()] = lastResponse.headers[key];
+          });
+          lastResponse.headers = headers;
+        } catch (e) {
+          lastResponse = undefined;
+        }
+        await sinon.clock.runAllAsync();
       }
-      await sinon.clock.runAllAsync();
-    });
+    );
   };
 
   beforeEach(() => {
@@ -385,53 +413,17 @@ describe('fetch', () => {
     it('span should have correct events', () => {
       const span: tracing.ReadableSpan = exportSpy.args[1][0][0];
       const events = span.events;
-      assert.strictEqual(events.length, 9, 'number of events is wrong');
-
-      assert.strictEqual(
-        events[0].name,
+      assert.strictEqual(events.length, 8, 'number of events is wrong');
+      testForCorrectEvents(events, [
         PTN.FETCH_START,
-        `event ${PTN.FETCH_START} is not defined`
-      );
-      assert.strictEqual(
-        events[1].name,
         PTN.DOMAIN_LOOKUP_START,
-        `event ${PTN.DOMAIN_LOOKUP_START} is not defined`
-      );
-      assert.strictEqual(
-        events[2].name,
         PTN.DOMAIN_LOOKUP_END,
-        `event ${PTN.DOMAIN_LOOKUP_END} is not defined`
-      );
-      assert.strictEqual(
-        events[3].name,
         PTN.CONNECT_START,
-        `event ${PTN.CONNECT_START} is not defined`
-      );
-      assert.strictEqual(
-        events[4].name,
-        PTN.SECURE_CONNECTION_START,
-        `event ${PTN.SECURE_CONNECTION_START} is not defined`
-      );
-      assert.strictEqual(
-        events[5].name,
         PTN.CONNECT_END,
-        `event ${PTN.CONNECT_END} is not defined`
-      );
-      assert.strictEqual(
-        events[6].name,
         PTN.REQUEST_START,
-        `event ${PTN.REQUEST_START} is not defined`
-      );
-      assert.strictEqual(
-        events[7].name,
         PTN.RESPONSE_START,
-        `event ${PTN.RESPONSE_START} is not defined`
-      );
-      assert.strictEqual(
-        events[8].name,
         PTN.RESPONSE_END,
-        `event ${PTN.RESPONSE_END} is not defined`
-      );
+      ]);
     });
 
     it('should create a span for preflight request', () => {
@@ -465,53 +457,17 @@ describe('fetch', () => {
     it('preflight request span should have correct events', () => {
       const span: tracing.ReadableSpan = exportSpy.args[0][0][0];
       const events = span.events;
-      assert.strictEqual(events.length, 9, 'number of events is wrong');
-
-      assert.strictEqual(
-        events[0].name,
+      assert.strictEqual(events.length, 8, 'number of events is wrong');
+      testForCorrectEvents(events, [
         PTN.FETCH_START,
-        `event ${PTN.FETCH_START} is not defined`
-      );
-      assert.strictEqual(
-        events[1].name,
         PTN.DOMAIN_LOOKUP_START,
-        `event ${PTN.DOMAIN_LOOKUP_START} is not defined`
-      );
-      assert.strictEqual(
-        events[2].name,
         PTN.DOMAIN_LOOKUP_END,
-        `event ${PTN.DOMAIN_LOOKUP_END} is not defined`
-      );
-      assert.strictEqual(
-        events[3].name,
         PTN.CONNECT_START,
-        `event ${PTN.CONNECT_START} is not defined`
-      );
-      assert.strictEqual(
-        events[4].name,
-        PTN.SECURE_CONNECTION_START,
-        `event ${PTN.SECURE_CONNECTION_START} is not defined`
-      );
-      assert.strictEqual(
-        events[5].name,
         PTN.CONNECT_END,
-        `event ${PTN.CONNECT_END} is not defined`
-      );
-      assert.strictEqual(
-        events[6].name,
         PTN.REQUEST_START,
-        `event ${PTN.REQUEST_START} is not defined`
-      );
-      assert.strictEqual(
-        events[7].name,
         PTN.RESPONSE_START,
-        `event ${PTN.RESPONSE_START} is not defined`
-      );
-      assert.strictEqual(
-        events[8].name,
         PTN.RESPONSE_END,
-        `event ${PTN.RESPONSE_END} is not defined`
-      );
+      ]);
     });
 
     it('should set trace headers', () => {
@@ -541,16 +497,16 @@ describe('fetch', () => {
 
     it('should keep custom headers with a request object and a headers object', () => {
       const r = new Request('url', {
-        headers: new Headers({'foo': 'bar'})
+        headers: new Headers({ foo: 'bar' }),
       });
       window.fetch(r).catch(() => {});
       assert.ok(r.headers.get('foo') === 'bar');
     });
 
-    it('should keep custom headers with url, untyped request object and typed headers object', () => {
+    it('should keep custom headers with url, untyped request object and typed (Headers) headers object', () => {
       const url = 'url';
       const init = {
-        headers: new Headers({'foo': 'bar'})
+        headers: new Headers({ foo: 'bar' }),
       };
       window.fetch(url, init).catch(() => {});
       assert.ok(init.headers.get('foo') === 'bar');
@@ -559,19 +515,33 @@ describe('fetch', () => {
     it('should keep custom headers with url, untyped request object and untyped headers object', () => {
       const url = 'url';
       const init = {
-        headers: {'foo': 'bar'}
+        headers: { foo: 'bar' },
       };
       window.fetch(url, init).catch(() => {});
       assert.ok(init.headers['foo'] === 'bar');
     });
 
+    it('should keep custom headers with url, untyped request object and typed (Map) headers object', () => {
+      const url = 'url';
+      const init = {
+        headers: new Map().set('foo', 'bar'),
+      };
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore variable init not of RequestInit type
+      window.fetch(url, init).catch(() => {});
+      assert.ok(init.headers.get('foo') === 'bar');
+    });
+
     it('should pass request object as first parameter to the original function (#2411)', () => {
       const r = new Request(url);
-      return window.fetch(r).then(() => {
-        assert.ok(true);
-      }, (response: Response) => {
-        assert.fail(response.statusText);
-      });
+      return window.fetch(r).then(
+        () => {
+          assert.ok(true);
+        },
+        (response: Response) => {
+          assert.fail(response.statusText);
+        }
+      );
     });
 
     it('should NOT clear the resources', () => {
@@ -622,10 +592,55 @@ describe('fetch', () => {
     });
   });
 
+  describe('when request is secure and successful', () => {
+    beforeEach(async () => {
+      const propagateTraceHeaderCorsUrls = [secureUrl];
+      await prepareData(secureUrl, { propagateTraceHeaderCorsUrls });
+    });
+
+    afterEach(() => {
+      clearData();
+    });
+
+    it('span should have correct events', () => {
+      const span: tracing.ReadableSpan = exportSpy.args[1][0][0];
+      const events = span.events;
+      assert.strictEqual(events.length, 9, 'number of events is wrong');
+      testForCorrectEvents(events, [
+        PTN.FETCH_START,
+        PTN.DOMAIN_LOOKUP_START,
+        PTN.DOMAIN_LOOKUP_END,
+        PTN.CONNECT_START,
+        PTN.SECURE_CONNECTION_START,
+        PTN.CONNECT_END,
+        PTN.REQUEST_START,
+        PTN.RESPONSE_START,
+        PTN.RESPONSE_END,
+      ]);
+    });
+
+    it('preflight request span should have correct events', () => {
+      const span: tracing.ReadableSpan = exportSpy.args[0][0][0];
+      const events = span.events;
+      assert.strictEqual(events.length, 9, 'number of events is wrong');
+      testForCorrectEvents(events, [
+        PTN.FETCH_START,
+        PTN.DOMAIN_LOOKUP_START,
+        PTN.DOMAIN_LOOKUP_END,
+        PTN.CONNECT_START,
+        PTN.SECURE_CONNECTION_START,
+        PTN.CONNECT_END,
+        PTN.REQUEST_START,
+        PTN.RESPONSE_START,
+        PTN.RESPONSE_END,
+      ]);
+    });
+  });
+
   describe('applyCustomAttributesOnSpan option', () => {
     const prepare = async (
       url: string,
-      applyCustomAttributesOnSpan: FetchCustomAttributeFunction,
+      applyCustomAttributesOnSpan: FetchCustomAttributeFunction
     ) => {
       const propagateTraceHeaderCorsUrls = [url];
 
@@ -640,12 +655,9 @@ describe('fetch', () => {
     });
 
     it('applies attributes when the request is succesful', async () => {
-      await prepare(
-        url,
-        span => {
-          span.setAttribute(CUSTOM_ATTRIBUTE_KEY, 'custom value');
-        },
-      );
+      await prepare(url, span => {
+        span.setAttribute(CUSTOM_ATTRIBUTE_KEY, 'custom value');
+      });
       const span: tracing.ReadableSpan = exportSpy.args[1][0][0];
       const attributes = span.attributes;
 
@@ -653,12 +665,9 @@ describe('fetch', () => {
     });
 
     it('applies custom attributes when the request fails', async () => {
-      await prepare(
-        badUrl,
-        span => {
-          span.setAttribute(CUSTOM_ATTRIBUTE_KEY, 'custom value');
-        },
-      );
+      await prepare(badUrl, span => {
+        span.setAttribute(CUSTOM_ATTRIBUTE_KEY, 'custom value');
+      });
       const span: tracing.ReadableSpan = exportSpy.args[1][0][0];
       const attributes = span.attributes;
 
@@ -716,11 +725,14 @@ describe('fetch', () => {
     });
     it('should pass request object as the first parameter to the original function (#2411)', () => {
       const r = new Request(url);
-      return window.fetch(r).then(() => {
-        assert.ok(true);
-      }, (response: Response) => {
-        assert.fail(response.statusText);
-      });
+      return window.fetch(r).then(
+        () => {
+          assert.ok(true);
+        },
+        (response: Response) => {
+          assert.fail(response.statusText);
+        }
+      );
     });
   });
 
@@ -801,13 +813,18 @@ describe('fetch', () => {
         `Wrong number of spans: ${exportSpy.args.length}`
       );
 
-      assert.strictEqual(events.length, 9, 'number of events is wrong');
+      assert.strictEqual(events.length, 8, 'number of events is wrong');
 
-      assert.strictEqual(
-        events[6].name,
+      testForCorrectEvents(events, [
+        PTN.FETCH_START,
+        PTN.DOMAIN_LOOKUP_START,
+        PTN.DOMAIN_LOOKUP_END,
+        PTN.CONNECT_START,
+        PTN.CONNECT_END,
         PTN.REQUEST_START,
-        `event ${PTN.REQUEST_START} is not defined`
-      );
+        PTN.RESPONSE_START,
+        PTN.RESPONSE_END,
+      ]);
     });
   });
 
@@ -830,11 +847,27 @@ describe('fetch', () => {
         `Wrong number of spans: ${exportSpy.args.length}`
       );
 
-      assert.strictEqual(events.length, 9, 'number of events is wrong');
-      assert.strictEqual(
-        events[6].name,
+      assert.strictEqual(events.length, 8, 'number of events is wrong');
+      testForCorrectEvents(events, [
+        PTN.FETCH_START,
+        PTN.DOMAIN_LOOKUP_START,
+        PTN.DOMAIN_LOOKUP_END,
+        PTN.CONNECT_START,
+        PTN.CONNECT_END,
         PTN.REQUEST_START,
-        `event ${PTN.REQUEST_START} is not defined`
+        PTN.RESPONSE_START,
+        PTN.RESPONSE_END,
+      ]);
+    });
+
+    it('should have an absolute http.url attribute', () => {
+      const span: tracing.ReadableSpan = exportSpy.args[0][0][0];
+      const attributes = span.attributes;
+
+      assert.strictEqual(
+        attributes[SemanticAttributes.HTTP_URL],
+        location.origin + '/get',
+        `attributes ${SemanticAttributes.HTTP_URL} is wrong`
       );
     });
   });
@@ -857,12 +890,17 @@ describe('fetch', () => {
         2,
         `Wrong number of spans: ${exportSpy.args.length}`
       );
-      assert.strictEqual(events.length, 9, 'number of events is wrong');
-      assert.strictEqual(
-        events[6].name,
+      assert.strictEqual(events.length, 8, 'number of events is wrong');
+      testForCorrectEvents(events, [
+        PTN.FETCH_START,
+        PTN.DOMAIN_LOOKUP_START,
+        PTN.DOMAIN_LOOKUP_END,
+        PTN.CONNECT_START,
+        PTN.CONNECT_END,
         PTN.REQUEST_START,
-        `event ${PTN.REQUEST_START} is not defined`
-      );
+        PTN.RESPONSE_START,
+        PTN.RESPONSE_END,
+      ]);
     });
   });
 

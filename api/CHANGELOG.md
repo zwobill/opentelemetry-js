@@ -2,6 +2,61 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+* feat(api): add SugaredTracer for functions not defined in the spec
+* fix(api): fix unreachable @opentelemetry/api/experimental entry [#4446](https://github.com/open-telemetry/opentelemetry-js/pull/4446) @legendecas
+
+## 1.7.0
+
+### :rocket: (Enhancement)
+
+* feat(metrics): prototype experimental advice support [#3876](https://github.com/open-telemetry/opentelemetry-js/pull/3876) @legendecas
+* feat(api): publish api esnext target [#4231](https://github.com/open-telemetry/opentelemetry-js/pull/4231) @legendecas
+
+## 1.6.0
+
+### :bug: (Bug Fix)
+
+* Revert "feat(api): add attributes argument to recordException API [#4071](https://github.com/open-telemetry/opentelemetry-js/pull/4071)"
+  * This feature was an unintentional breaking change introduced with 1.5.0
+
+## 1.5.0
+
+### :rocket: (Enhancement)
+
+* feat(api): add attributes argument to recordException API [#4071](https://github.com/open-telemetry/opentelemetry-js/pull/4071)
+
+## 1.4.1
+
+### :bug: (Bug Fix)
+
+* fix(metrics): export `MetricsAPI` type [#3535](https://github.com/open-telemetry/opentelemetry-js/pull/3535)
+* fix(api): rename `LoggerOptions` to `DiagLoggerOptions` [#3641](https://github.com/open-telemetry/opentelemetry-js/pull/3641)
+* fix(api): export `DiagLoggerOptions` type [#3639](https://github.com/open-telemetry/opentelemetry-js/pull/3639)
+
+## 1.4.0
+
+### :rocket: (Enhancement)
+
+* feat(api): add `getActiveBaggage` API [#3385](https://github.com/open-telemetry/opentelemetry-js/pull/3385)
+* feat(api): add optional `droppedAttributesCount` property in the `Link` interface [#3576](https://github.com/open-telemetry/opentelemetry-js/pull/3576) @mohitk05
+
+### :bug: (Bug Fix)
+
+* fix(api): deprecate MetricAttributes and MetricAttributeValue [#3406](https://github.com/open-telemetry/opentelemetry-js/pull/3406) @blumamir
+* fix(api): use active context as default in NoopTracer [#3476](https://github.com/open-telemetry/opentelemetry-js/pull/3476) @flarna
+* fix(api): declare this parameter type in observable callbacks [#3497](https://github.com/open-telemetry/opentelemetry-js/pull/3497) @legendecas
+
+### :house: (Internal)
+
+* test(api): disable module concatenation in tree-shaking test [#3409](https://github.com/open-telemetry/opentelemetry-js/pull/3409) @legendecas
+
+## [1.3.0](https://www.github.com/open-telemetry/opentelemetry-js-api/compare/v1.2.0...v1.3.0)
+
+* feat(api): merge api-metrics into api [#3374](https://github.com/open-telemetry/opentelemetry-js/pull/3374) @legendecas
+* Optionally suppress warning about logger being overwritten ([#3366](https://www.github.com/open-telemetry/opentelemetry-js-api/pull/3366))
+
 ## [1.2.0](https://www.github.com/open-telemetry/opentelemetry-js-api/compare/v1.1.0...v1.2.0) (2022-08-09)
 
 ### Features

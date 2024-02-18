@@ -14,30 +14,42 @@
  * limitations under the License.
  */
 
+import { hexToBinary } from '@opentelemetry/core';
+import { getOtlpEncoder } from '../src';
 import { toAnyValue } from '../src/common/internal';
 import * as assert from 'assert';
+
+const traceId = 'abcdef01234567890000000000000000';
+const spanId = '12341234abcdabcd';
 
 describe('common', () => {
   describe('toAnyValue', () => {
     it('serializes an array', () => {
-      const anyValue = toAnyValue([1, 'two', false, 2.5, new Uint8Array([0, 1, 2]), { somekey: 'somevalue' }]);
+      const anyValue = toAnyValue([
+        1,
+        'two',
+        false,
+        2.5,
+        new Uint8Array([0, 1, 2]),
+        { somekey: 'somevalue' },
+      ]);
       assert.deepStrictEqual(anyValue, {
         arrayValue: {
           values: [
             {
-              intValue: 1
+              intValue: 1,
             },
             {
-              stringValue: 'two'
+              stringValue: 'two',
             },
             {
-              boolValue: false
+              boolValue: false,
             },
             {
-              doubleValue: 2.5
+              doubleValue: 2.5,
             },
             {
-              bytesValue: new Uint8Array([0, 1, 2])
+              bytesValue: new Uint8Array([0, 1, 2]),
             },
             {
               kvlistValue: {
@@ -45,15 +57,75 @@ describe('common', () => {
                   {
                     key: 'somekey',
                     value: {
-                      stringValue: 'somevalue'
-                    }
-                  }
-                ]
-              }
+                      stringValue: 'somevalue',
+                    },
+                  },
+                ],
+              },
             },
-          ]
-        }
+          ],
+        },
       });
+    });
+  });
+
+  describe('otlp encoder', () => {
+    it('defaults to long timestamps and binary encoding given no options', () => {
+      const encoder = getOtlpEncoder();
+      assert.deepStrictEqual(encoder.encodeHrTime([1697978649, 99870675]), {
+        low: 3352011219,
+        high: 395341461,
+      });
+      assert.deepStrictEqual(
+        encoder.encodeSpanContext(traceId),
+        hexToBinary(traceId)
+      );
+      assert.deepStrictEqual(
+        encoder.encodeOptionalSpanContext(spanId),
+        hexToBinary(spanId)
+      );
+      assert.deepStrictEqual(
+        encoder.encodeOptionalSpanContext(undefined),
+        undefined
+      );
+    });
+
+    it('defaults to long timestamps and base64 encoding given empty options', () => {
+      const encoder = getOtlpEncoder({});
+      assert.deepStrictEqual(encoder.encodeHrTime([1697978649, 99870675]), {
+        low: 3352011219,
+        high: 395341461,
+      });
+      assert.deepStrictEqual(
+        encoder.encodeSpanContext(traceId),
+        hexToBinary(traceId)
+      );
+      assert.deepStrictEqual(
+        encoder.encodeOptionalSpanContext(spanId),
+        hexToBinary(spanId)
+      );
+      assert.deepStrictEqual(
+        encoder.encodeOptionalSpanContext(undefined),
+        undefined
+      );
+    });
+
+    it('can encode HrTime as string', () => {
+      const encoder = getOtlpEncoder({ useLongBits: false });
+      assert.deepStrictEqual(
+        encoder.encodeHrTime([1697978649, 99870675]),
+        '1697978649099870675'
+      );
+    });
+
+    it('can encode span context as hex', () => {
+      const encoder = getOtlpEncoder({ useHex: true });
+      assert.deepStrictEqual(encoder.encodeSpanContext(traceId), traceId);
+      assert.deepStrictEqual(encoder.encodeOptionalSpanContext(spanId), spanId);
+      assert.deepStrictEqual(
+        encoder.encodeOptionalSpanContext(undefined),
+        undefined
+      );
     });
   });
 });

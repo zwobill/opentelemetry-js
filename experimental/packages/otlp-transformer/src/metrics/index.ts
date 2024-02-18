@@ -15,10 +15,16 @@
  */
 import type { ResourceMetrics } from '@opentelemetry/sdk-metrics';
 import type { IExportMetricsServiceRequest } from './types';
+import type { OtlpEncodingOptions } from '../common/types';
 import { toResourceMetrics } from './internal';
 
-export function createExportMetricsServiceRequest(resourceMetrics: ResourceMetrics[]): IExportMetricsServiceRequest {
+export function createExportMetricsServiceRequest(
+  resourceMetrics: ResourceMetrics[],
+  options?: OtlpEncodingOptions
+): IExportMetricsServiceRequest {
   return {
-    resourceMetrics: resourceMetrics.map(metrics => toResourceMetrics(metrics))
+    resourceMetrics: resourceMetrics.map(metrics =>
+      toResourceMetrics(metrics, options)
+    ),
   };
 }

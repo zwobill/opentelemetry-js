@@ -16,21 +16,32 @@
 
 import * as types from '../../types';
 import * as path from 'path';
+import { types as utilTypes } from 'util';
 import { satisfies } from 'semver';
+import { wrap, unwrap, massWrap, massUnwrap } from 'shimmer';
 import { InstrumentationAbstract } from '../../instrumentation';
-import { RequireInTheMiddleSingleton, Hooked } from './RequireInTheMiddleSingleton';
-import { InstrumentationModuleDefinition } from './types';
+import {
+  RequireInTheMiddleSingleton,
+  Hooked,
+} from './RequireInTheMiddleSingleton';
+import type { HookFn } from 'import-in-the-middle';
+import * as ImportInTheMiddle from 'import-in-the-middle';
+import { InstrumentationModuleDefinition } from '../../types';
 import { diag } from '@opentelemetry/api';
+import type { OnRequireFn } from 'require-in-the-middle';
+import { Hook } from 'require-in-the-middle';
 
 /**
  * Base abstract class for instrumenting node plugins
  */
 export abstract class InstrumentationBase<T = any>
   extends InstrumentationAbstract
-  implements types.Instrumentation {
+  implements types.Instrumentation
+{
   private _modules: InstrumentationModuleDefinition<T>[];
-  private _hooks: Hooked[] = [];
-  private _requireInTheMiddleSingleton: RequireInTheMiddleSingleton = RequireInTheMiddleSingleton.getInstance();
+  private _hooks: (Hooked | Hook)[] = [];
+  private _requireInTheMiddleSingleton: RequireInTheMiddleSingleton =
+    RequireInTheMiddleSingleton.getInstance();
   private _enabled = false;
 
   constructor(
@@ -51,8 +62,8 @@ export abstract class InstrumentationBase<T = any>
     if (this._modules.length === 0) {
       diag.debug(
         'No modules instrumentation has been defined for ' +
-        `'${this.instrumentationName}@${this.instrumentationVersion}'` +
-        ', nothing will be patched'
+          `'${this.instrumentationName}@${this.instrumentationVersion}'` +
+          ', nothing will be patched'
       );
     }
 
@@ -61,6 +72,75 @@ export abstract class InstrumentationBase<T = any>
     }
   }
 
+  protected override _wrap: typeof wrap = (moduleExports, name, wrapper) => {
+    if (!utilTypes.isProxy(moduleExports)) {
+      return wrap(moduleExports, name, wrapper);
+    } else {
+      const wrapped = wrap(Object.assign({}, moduleExports), name, wrapper);
+
+      return Object.defineProperty(moduleExports, name, {
+        value: wrapped,
+      });
+    }
+  };
+
+  protected override _unwrap: typeof unwrap = (moduleExports, name) => {
+    if (!utilTypes.isProxy(moduleExports)) {
+      return unwrap(moduleExports, name);
+    } else {
+      return Object.defineProperty(moduleExports, name, {
+        value: moduleExports[name],
+      });
+    }
+  };
+
+  protected override _massWrap: typeof massWrap = (
+    moduleExportsArray,
+    names,
+    wrapper
+  ) => {
+    if (!moduleExportsArray) {
+      diag.error('must provide one or more modules to patch');
+      return;
+    } else if (!Array.isArray(moduleExportsArray)) {
+      moduleExportsArray = [moduleExportsArray];
+    }
+
+    if (!(names && Array.isArray(names))) {
+      diag.error('must provide one or more functions to wrap on modules');
+      return;
+    }
+
+    moduleExportsArray.forEach(moduleExports => {
+      names.forEach(name => {
+        this._wrap(moduleExports, name, wrapper);
+      });
+    });
+  };
+
+  protected override _massUnwrap: typeof massUnwrap = (
+    moduleExportsArray,
+    names
+  ) => {
+    if (!moduleExportsArray) {
+      diag.error('must provide one or more modules to patch');
+      return;
+    } else if (!Array.isArray(moduleExportsArray)) {
+      moduleExportsArray = [moduleExportsArray];
+    }
+
+    if (!(names && Array.isArray(names))) {
+      diag.error('must provide one or more functions to wrap on modules');
+      return;
+    }
+
+    moduleExportsArray.forEach(moduleExports => {
+      names.forEach(name => {
+        this._unwrap(moduleExports, name);
+      });
+    });
+  };
+
   private _warnOnPreloadedModules(): void {
     this._modules.forEach((module: InstrumentationModuleDefinition<T>) => {
       const { name } = module;
@@ -68,7 +148,9 @@ export abstract class InstrumentationBase<T = any>
         const resolvedModule = require.resolve(name);
         if (require.cache[resolvedModule]) {
           // Module is already cached, which means the instrumentation hook might not work
-          this._diag.warn(`Module ${name} has been loaded before ${this.instrumentationName} so it might not work, please initialize it before requiring ${name}`);
+          this._diag.warn(
+            `Module ${name} has been loaded before ${this.instrumentationName} so it might not work, please initialize it before requiring ${name}`
+          );
         }
       } catch {
         // Module isn't available, we can simply skip
@@ -92,7 +174,7 @@ export abstract class InstrumentationBase<T = any>
     module: InstrumentationModuleDefinition<T>,
     exports: T,
     name: string,
-    baseDir?: string
+    baseDir?: string | void
   ): T {
     if (!baseDir) {
       if (typeof module.patch === 'function') {
@@ -122,19 +204,19 @@ export abstract class InstrumentationBase<T = any>
     }
     // internal file
     const files = module.files ?? [];
+    const normalizedName = path.normalize(name);
     const supportedFileInstrumentations = files
-      .filter(f => f.name === name)
-      .filter(f => isSupported(f.supportedVersions, version, module.includePrerelease));
-    return supportedFileInstrumentations.reduce<T>(
-      (patchedExports, file) => {
-        file.moduleExports = patchedExports;
-        if (this._enabled) {
-          return file.patch(patchedExports, module.moduleVersion);
-        }
-        return patchedExports;
-      },
-      exports,
-    );
+      .filter(f => f.name === normalizedName)
+      .filter(f =>
+        isSupported(f.supportedVersions, version, module.includePrerelease)
+      );
+    return supportedFileInstrumentations.reduce<T>((patchedExports, file) => {
+      file.moduleExports = patchedExports;
+      if (this._enabled) {
+        return file.patch(patchedExports, module.moduleVersion);
+      }
+      return patchedExports;
+    }, exports);
   }
 
   public enable(): void {
@@ -160,21 +242,38 @@ export abstract class InstrumentationBase<T = any>
 
     this._warnOnPreloadedModules();
     for (const module of this._modules) {
-      this._hooks.push(
-        this._requireInTheMiddleSingleton.register(
-          module.name,
-          (exports, name, baseDir) => {
-            return this._onRequire<typeof exports>(
-              (module as unknown) as InstrumentationModuleDefinition<
-                typeof exports
-              >,
-              exports,
-              name,
-              baseDir
-            );
-          }
-        )
-      );
+      const hookFn: HookFn = (exports, name, baseDir) => {
+        return this._onRequire<typeof exports>(
+          module as unknown as InstrumentationModuleDefinition<typeof exports>,
+          exports,
+          name,
+          baseDir
+        );
+      };
+      const onRequire: OnRequireFn = (exports, name, baseDir) => {
+        return this._onRequire<typeof exports>(
+          module as unknown as InstrumentationModuleDefinition<typeof exports>,
+          exports,
+          name,
+          baseDir
+        );
+      };
+
+      // `RequireInTheMiddleSingleton` does not support absolute paths.
+      // For an absolute paths, we must create a separate instance of the
+      // require-in-the-middle `Hook`.
+      const hook = path.isAbsolute(module.name)
+        ? new Hook([module.name], { internals: true }, onRequire)
+        : this._requireInTheMiddleSingleton.register(module.name, onRequire);
+
+      this._hooks.push(hook);
+      const esmHook =
+        new (ImportInTheMiddle as unknown as typeof ImportInTheMiddle.default)(
+          [module.name],
+          { internals: false },
+          <HookFn>hookFn
+        );
+      this._hooks.push(esmHook);
     }
   }
 
@@ -201,7 +300,11 @@ export abstract class InstrumentationBase<T = any>
   }
 }
 
-function isSupported(supportedVersions: string[], version?: string, includePrerelease?: boolean): boolean {
+function isSupported(
+  supportedVersions: string[],
+  version?: string,
+  includePrerelease?: boolean
+): boolean {
   if (typeof version === 'undefined') {
     // If we don't have the version, accept the wildcard case only
     return supportedVersions.includes('*');

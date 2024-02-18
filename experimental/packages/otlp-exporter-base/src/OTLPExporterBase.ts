@@ -15,7 +15,11 @@
  */
 
 import { diag } from '@opentelemetry/api';
-import { ExportResult, ExportResultCode, BindOnceFuture } from '@opentelemetry/core';
+import {
+  ExportResult,
+  ExportResultCode,
+  BindOnceFuture,
+} from '@opentelemetry/core';
 import {
   OTLPExporterError,
   OTLPExporterConfigBase,
@@ -29,8 +33,8 @@ import { configureExporterTimeout } from './util';
 export abstract class OTLPExporterBase<
   T extends OTLPExporterConfigBase,
   ExportItem,
-  ServiceRequest
-  > {
+  ServiceRequest,
+> {
   public readonly url: string;
   public readonly hostname: string | undefined;
   public readonly timeoutMillis: number;
@@ -53,7 +57,7 @@ export abstract class OTLPExporterBase<
     this._concurrencyLimit =
       typeof config.concurrencyLimit === 'number'
         ? config.concurrencyLimit
-        : Infinity;
+        : 30;
 
     this.timeoutMillis = configureExporterTimeout(config.timeoutMillis);
 
@@ -66,7 +70,10 @@ export abstract class OTLPExporterBase<
    * @param items
    * @param resultCallback
    */
-  export(items: ExportItem[], resultCallback: (result: ExportResult) => void): void {
+  export(
+    items: ExportItem[],
+    resultCallback: (result: ExportResult) => void
+  ): void {
     if (this._shutdownOnce.isCalled) {
       resultCallback({
         code: ExportResultCode.FAILED,
@@ -111,15 +118,21 @@ export abstract class OTLPExporterBase<
   }
 
   /**
+   * Exports any pending spans in the exporter
+   */
+  forceFlush(): Promise<void> {
+    return Promise.all(this._sendingPromises).then(() => {
+      /** ignore resolved values */
+    });
+  }
+
+  /**
    * Called by _shutdownOnce with BindOnceFuture
    */
   private _shutdown(): Promise<void> {
     diag.debug('shutdown started');
     this.onShutdown();
-    return Promise.all(this._sendingPromises)
-      .then(() => {
-        /** ignore resolved values */
-      });
+    return this.forceFlush();
   }
 
   abstract onShutdown(): void;

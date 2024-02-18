@@ -11,16 +11,27 @@ This is a simple example that demonstrates basic metrics collection and exports 
 npm install
 ```
 
-Setup [Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/)
-
 ## Run the Application
-
-- Run the server
 
 ```sh
 # from this directory
 npm run start
 ```
+
+If you are using the default configurations, the metrics should be available at <http://localhost:9464/metrics>
+
+## Run Prometheus
+
+### With docker
+
+```sh
+# from this directory
+docker compose up
+```
+
+### With binary
+
+Setup [Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/)
 
 - Replace the `prometheus.yml` provided by the Prometheus installation with the following:
 
@@ -34,7 +45,6 @@ scrape_configs:
     # scheme defaults to 'http'.
     static_configs:
     - targets: ['localhost:9464']
-
 ```
 
 - Start Prometheus
@@ -44,17 +54,18 @@ scrape_configs:
 prometheus --config.file=prometheus.yml
 ```
 
-### Prometheus UI
+## Prometheus UI
 
 If you are using the default configurations, the prometheus client will be available at <http://localhost:9090>
 
 <p align="center"><img src="images/prom-counter.png?raw=true"/></p>
 <p align="center"><img src="images/prom-updowncounter.png?raw=true"/></p>
+<p align="center"><img src="images/prom-gauge.png?raw=true"/></p>
 
 ## Useful links
 
 - For more information on OpenTelemetry, visit: <https://opentelemetry.io/>
-- For more information on OpenTelemetry metrics, visit: <https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-sdk-metrics>
+- For more information on OpenTelemetry metrics, visit: <https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/sdk-metrics>
 - For more information on OpenTelemetry for Node.js, visit: <https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-sdk-trace-node>
 
 ## LICENSE

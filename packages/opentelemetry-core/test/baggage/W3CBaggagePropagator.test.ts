@@ -20,7 +20,7 @@ import {
   defaultTextMapGetter,
   defaultTextMapSetter,
   propagation,
-  baggageEntryMetadataFromString
+  baggageEntryMetadataFromString,
 } from '@opentelemetry/api';
 import { ROOT_CONTEXT } from '@opentelemetry/api';
 import * as assert from 'assert';
@@ -42,7 +42,12 @@ describe('W3CBaggagePropagator', () => {
         key1: { value: 'd4cda95b652f4a1592b449d5929fda1b' },
         'with/slash': { value: 'with spaces' },
         key3: { value: 'c88815a7-0fa9-4d95-a1f1-cdccce3c5c2a' },
-        key4: { value: 'foo', metadata: baggageEntryMetadataFromString('key4prop1=value1;key4prop2=value2;key4prop3WithNoValue') }
+        key4: {
+          value: 'foo',
+          metadata: baggageEntryMetadataFromString(
+            'key4prop1=value1;key4prop2=value2;key4prop3WithNoValue'
+          ),
+        },
       });
 
       httpBaggagePropagator.inject(
@@ -175,9 +180,10 @@ describe('W3CBaggagePropagator', () => {
   });
 
   describe('.extract()', () => {
-    const baggageValue = 'key1=d4cda95b,key3=c88815a7, keyn   = valn, keym =valm';
+    const baggageValue =
+      'key1=d4cda95b==,key3=c88815a7, keyn   = valn, keym =valm';
     const expected = propagation.createBaggage({
-      key1: { value: 'd4cda95b' },
+      key1: { value: 'd4cda95b==' },
       key3: { value: 'c88815a7' },
       keyn: { value: 'valn' },
       keym: { value: 'valm' },
@@ -210,7 +216,10 @@ describe('W3CBaggagePropagator', () => {
     });
 
     it('should extract context of a sampled span when the headerValue comes as array with multiple items', () => {
-      carrier[BAGGAGE_HEADER] = ['key1=d4cda95b,key3=c88815a7, keyn   = valn', 'keym =valm'];
+      carrier[BAGGAGE_HEADER] = [
+        'key1=d4cda95b==,key3=c88815a7, keyn   = valn',
+        'keym =valm',
+      ];
       const extractedBaggage = propagation.getBaggage(
         httpBaggagePropagator.extract(
           ROOT_CONTEXT,
@@ -273,10 +282,6 @@ describe('W3CBaggagePropagator', () => {
         header: '289371298nekjh2939299283jbk2b',
         baggage: undefined,
       },
-      invalidDoubleEqual: {
-        header: 'key1==value;key2=value2',
-        baggage: undefined,
-      },
       invalidWrongKeyValueFormat: {
         header: 'key1:value;key2=value2',
         baggage: undefined,
@@ -286,7 +291,7 @@ describe('W3CBaggagePropagator', () => {
         baggage: undefined,
       },
       mixInvalidAndValidKeys: {
-        header: 'key1==value,key2=value2',
+        header: 'key1:value,key2=value2',
         baggage: propagation.createBaggage({
           key2: {
             value: 'value2',

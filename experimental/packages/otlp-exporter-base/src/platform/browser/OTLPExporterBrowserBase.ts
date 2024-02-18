@@ -27,12 +27,8 @@ import { getEnv, baggageUtils } from '@opentelemetry/core';
  */
 export abstract class OTLPExporterBrowserBase<
   ExportItem,
-  ServiceRequest
-  > extends OTLPExporterBase<
-  OTLPExporterConfigBase,
-  ExportItem,
-  ServiceRequest
-  > {
+  ServiceRequest,
+> extends OTLPExporterBase<OTLPExporterConfigBase, ExportItem, ServiceRequest> {
   protected _headers: Record<string, string>;
   private _useXHR: boolean = false;
 
@@ -56,13 +52,9 @@ export abstract class OTLPExporterBrowserBase<
     }
   }
 
-  onInit(): void {
-    window.addEventListener('unload', this.shutdown);
-  }
+  onInit(): void {}
 
-  onShutdown(): void {
-    window.removeEventListener('unload', this.shutdown);
-  }
+  onShutdown(): void {}
 
   send(
     items: ExportItem[],
@@ -78,12 +70,24 @@ export abstract class OTLPExporterBrowserBase<
 
     const promise = new Promise<void>((resolve, reject) => {
       if (this._useXHR) {
-        sendWithXhr(body, this.url, this._headers, this.timeoutMillis, resolve, reject);
+        sendWithXhr(
+          body,
+          this.url,
+          this._headers,
+          this.timeoutMillis,
+          resolve,
+          reject
+        );
       } else {
-        sendWithBeacon(body, this.url, { type: 'application/json' }, resolve, reject);
+        sendWithBeacon(
+          body,
+          this.url,
+          { type: 'application/json' },
+          resolve,
+          reject
+        );
       }
-    })
-      .then(onSuccess, onError);
+    }).then(onSuccess, onError);
 
     this._sendingPromises.push(promise);
     const popPromise = () => {

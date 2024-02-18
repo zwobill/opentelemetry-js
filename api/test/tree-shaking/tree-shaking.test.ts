@@ -24,6 +24,9 @@ import * as realFs from 'fs';
 /**
  * Verify that tree-shaking can be properly applied on the @opentelemetry/api package.
  * Unused optional apis should be able to be removed from the final bundle.
+ *
+ * Webpack doesn't run in node 8 because it requires BigInt. Since we are testing
+ * build tooling here, we can safely skip tooling we know can't run anyway.
  */
 describe('tree-shaking', () => {
   const allowedAPIs = ['ContextAPI', 'DiagAPI'];
@@ -38,7 +41,7 @@ describe('tree-shaking', () => {
     },
     {
       name: 'TraceAPI',
-      export: 'trace'
+      export: 'trace',
     },
   ];
   const APIMatcher = /(?:class|function) (\w+API)/g;
@@ -56,11 +59,14 @@ describe('tree-shaking', () => {
   });
 
   for (const testAPI of testAPIs) {
-    it(`verify ${testAPI.name}`, async () => {
+    it(`verify ${testAPI.name}`, async function () {
+      if (parseInt(process.versions.node.split('.')[0], 10) < 10) {
+        this.skip();
+      }
       const sourceCode = `
-        import { ${testAPI.export} } from '../../';
-        console.log(${testAPI.export});
-      `;
+          import { ${testAPI.export} } from '../../';
+          console.log(${testAPI.export});
+        `;
       mfs.mkdirpSync(path.dirname(sourceCodePath));
       mfs.writeFileSync(sourceCodePath, sourceCode, { encoding: 'utf8' });
 
@@ -74,12 +80,13 @@ describe('tree-shaking', () => {
         optimization: {
           // disable minimization so that we can inspect the output easily.
           minimize: false,
-        }
+          // disable module concatenation so that variable names will not be mangled.
+          concatenateModules: false,
+        },
       });
 
       const fs = new Union();
-      fs.use(mfs as any)
-        .use(realFs);
+      fs.use(mfs as any).use(realFs);
 
       //direct webpack to use unionfs for file input
       compiler.inputFileSystem = fs;
@@ -94,7 +101,7 @@ describe('tree-shaking', () => {
           if (err) {
             return reject(err);
           }
-          resolve(stats);
+          resolve(stats!);
         });
       });
       assert.deepStrictEqual(stats.compilation.errors, []);

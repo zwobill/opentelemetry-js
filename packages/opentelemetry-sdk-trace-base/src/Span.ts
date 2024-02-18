@@ -14,19 +14,35 @@
  * limitations under the License.
  */
 
-import * as api from '@opentelemetry/api';
-import { Context, HrTime, SpanAttributeValue } from '@opentelemetry/api';
 import {
-  Clock,
+  Context,
+  diag,
+  Exception,
+  HrTime,
+  Link,
+  Span as APISpan,
+  SpanAttributes,
+  SpanAttributeValue,
+  SpanContext,
+  SpanKind,
+  SpanStatus,
+  SpanStatusCode,
+  TimeInput,
+} from '@opentelemetry/api';
+import {
+  addHrTimes,
+  millisToHrTime,
+  getTimeOrigin,
+  hrTime,
   hrTimeDuration,
   InstrumentationLibrary,
   isAttributeValue,
   isTimeInput,
+  isTimeInputHrTime,
   otperformance,
   sanitizeAttributes,
-  timeInputToHrTime
 } from '@opentelemetry/core';
-import { Resource } from '@opentelemetry/resources';
+import { IResource } from '@opentelemetry/resources';
 import { SemanticAttributes } from '@opentelemetry/semantic-conventions';
 import { ExceptionEventName } from './enums';
 import { ReadableSpan } from './export/ReadableSpan';
@@ -38,29 +54,37 @@ import { SpanLimits } from './types';
 /**
  * This class represents a span.
  */
-export class Span implements api.Span, ReadableSpan {
+export class Span implements APISpan, ReadableSpan {
   // Below properties are included to implement ReadableSpan for export
   // purposes but are not intended to be written-to directly.
-  private readonly _spanContext: api.SpanContext;
-  readonly kind: api.SpanKind;
+  private readonly _spanContext: SpanContext;
+  readonly kind: SpanKind;
   readonly parentSpanId?: string;
-  readonly attributes: api.SpanAttributes = {};
-  readonly links: api.Link[] = [];
+  readonly attributes: SpanAttributes = {};
+  readonly links: Link[] = [];
   readonly events: TimedEvent[] = [];
-  readonly startTime: api.HrTime;
-  readonly resource: Resource;
+  readonly startTime: HrTime;
+  readonly resource: IResource;
   readonly instrumentationLibrary: InstrumentationLibrary;
+
+  private _droppedAttributesCount = 0;
+  private _droppedEventsCount: number = 0;
+  private _droppedLinksCount: number = 0;
+
   name: string;
-  status: api.SpanStatus = {
-    code: api.SpanStatusCode.UNSET,
+  status: SpanStatus = {
+    code: SpanStatusCode.UNSET,
   };
-  endTime: api.HrTime = [0, 0];
+  endTime: HrTime = [0, 0];
   private _ended = false;
-  private _duration: api.HrTime = [-1, -1];
+  private _duration: HrTime = [-1, -1];
   private readonly _spanProcessor: SpanProcessor;
   private readonly _spanLimits: SpanLimits;
   private readonly _attributeValueLengthLimit: number;
-  private readonly _clock: Clock;
+
+  private readonly _performanceStartTime: number;
+  private readonly _performanceOffset: number;
+  private readonly _startTimeProvided: boolean;
 
   /**
    * Constructs a new Span instance.
@@ -71,29 +95,43 @@ export class Span implements api.Span, ReadableSpan {
     parentTracer: Tracer,
     context: Context,
     spanName: string,
-    spanContext: api.SpanContext,
-    kind: api.SpanKind,
+    spanContext: SpanContext,
+    kind: SpanKind,
     parentSpanId?: string,
-    links: api.Link[] = [],
-    startTime?: api.TimeInput,
-    clock: Clock = otperformance,
+    links: Link[] = [],
+    startTime?: TimeInput,
+    _deprecatedClock?: unknown, // keeping this argument even though it is unused to ensure backwards compatibility
+    attributes?: SpanAttributes
   ) {
-    this._clock = clock;
     this.name = spanName;
     this._spanContext = spanContext;
     this.parentSpanId = parentSpanId;
     this.kind = kind;
     this.links = links;
-    this.startTime = timeInputToHrTime(startTime ?? clock.now());
+
+    const now = Date.now();
+    this._performanceStartTime = otperformance.now();
+    this._performanceOffset =
+      now - (this._performanceStartTime + getTimeOrigin());
+    this._startTimeProvided = startTime != null;
+
+    this.startTime = this._getTime(startTime ?? now);
+
     this.resource = parentTracer.resource;
     this.instrumentationLibrary = parentTracer.instrumentationLibrary;
     this._spanLimits = parentTracer.getSpanLimits();
+    this._attributeValueLengthLimit =
+      this._spanLimits.attributeValueLengthLimit || 0;
+
+    if (attributes != null) {
+      this.setAttributes(attributes);
+    }
+
     this._spanProcessor = parentTracer.getActiveSpanProcessor();
     this._spanProcessor.onStart(this, context);
-    this._attributeValueLengthLimit = this._spanLimits.attributeValueLengthLimit || 0;
   }
 
-  spanContext(): api.SpanContext {
+  spanContext(): SpanContext {
     return this._spanContext;
   }
 
@@ -101,26 +139,27 @@ export class Span implements api.Span, ReadableSpan {
   setAttribute(key: string, value: unknown): this {
     if (value == null || this._isSpanEnded()) return this;
     if (key.length === 0) {
-      api.diag.warn(`Invalid attribute key: ${key}`);
+      diag.warn(`Invalid attribute key: ${key}`);
       return this;
     }
     if (!isAttributeValue(value)) {
-      api.diag.warn(`Invalid attribute value set for key: ${key}`);
+      diag.warn(`Invalid attribute value set for key: ${key}`);
       return this;
     }
 
     if (
       Object.keys(this.attributes).length >=
-      this._spanLimits.attributeCountLimit! &&
+        this._spanLimits.attributeCountLimit! &&
       !Object.prototype.hasOwnProperty.call(this.attributes, key)
     ) {
+      this._droppedAttributesCount++;
       return this;
     }
     this.attributes[key] = this._truncateToSize(value);
     return this;
   }
 
-  setAttributes(attributes: api.SpanAttributes): this {
+  setAttributes(attributes: SpanAttributes): this {
     for (const [k, v] of Object.entries(attributes)) {
       this.setAttribute(k, v);
     }
@@ -132,42 +171,46 @@ export class Span implements api.Span, ReadableSpan {
    * @param name Span Name
    * @param [attributesOrStartTime] Span attributes or start time
    *     if type is {@type TimeInput} and 3rd param is undefined
-   * @param [startTime] Specified start time for the event
+   * @param [timeStamp] Specified time stamp for the event
    */
   addEvent(
     name: string,
-    attributesOrStartTime?: api.SpanAttributes | api.TimeInput,
-    startTime?: api.TimeInput
+    attributesOrStartTime?: SpanAttributes | TimeInput,
+    timeStamp?: TimeInput
   ): this {
     if (this._isSpanEnded()) return this;
     if (this._spanLimits.eventCountLimit === 0) {
-      api.diag.warn('No events allowed.');
+      diag.warn('No events allowed.');
+      this._droppedEventsCount++;
       return this;
     }
     if (this.events.length >= this._spanLimits.eventCountLimit!) {
-      api.diag.warn('Dropping extra events.');
+      if (this._droppedEventsCount === 0) {
+        diag.debug('Dropping extra events.');
+      }
       this.events.shift();
+      this._droppedEventsCount++;
     }
+
     if (isTimeInput(attributesOrStartTime)) {
-      if (typeof startTime === 'undefined') {
-        startTime = attributesOrStartTime as api.TimeInput;
+      if (!isTimeInput(timeStamp)) {
+        timeStamp = attributesOrStartTime;
       }
       attributesOrStartTime = undefined;
     }
-    if (typeof startTime === 'undefined') {
-      startTime = this._clock.now();
-    }
 
     const attributes = sanitizeAttributes(attributesOrStartTime);
+
     this.events.push({
       name,
       attributes,
-      time: timeInputToHrTime(startTime),
+      time: this._getTime(timeStamp),
+      droppedAttributesCount: 0,
     });
     return this;
   }
 
-  setStatus(status: api.SpanStatus): this {
+  setStatus(status: SpanStatus): this {
     if (this._isSpanEnded()) return this;
     this.status = status;
     return this;
@@ -179,18 +222,20 @@ export class Span implements api.Span, ReadableSpan {
     return this;
   }
 
-  end(endTime?: api.TimeInput): void {
+  end(endTime?: TimeInput): void {
     if (this._isSpanEnded()) {
-      api.diag.error('You can only call end() on a span once.');
+      diag.error(
+        `${this.name} ${this._spanContext.traceId}-${this._spanContext.spanId} - You can only call end() on a span once.`
+      );
       return;
     }
     this._ended = true;
 
-    this.endTime = timeInputToHrTime(endTime ?? this._clock.now());
+    this.endTime = this._getTime(endTime);
     this._duration = hrTimeDuration(this.startTime, this.endTime);
 
     if (this._duration[0] < 0) {
-      api.diag.warn(
+      diag.warn(
         'Inconsistent start and end time, startTime > endTime. Setting span duration to 0ms.',
         this.startTime,
         this.endTime
@@ -199,22 +244,56 @@ export class Span implements api.Span, ReadableSpan {
       this._duration = [0, 0];
     }
 
+    if (this._droppedEventsCount > 0) {
+      diag.warn(
+        `Dropped ${this._droppedEventsCount} events because eventCountLimit reached`
+      );
+    }
+
     this._spanProcessor.onEnd(this);
+  }
+
+  private _getTime(inp?: TimeInput): HrTime {
+    if (typeof inp === 'number' && inp < otperformance.now()) {
+      // must be a performance timestamp
+      // apply correction and convert to hrtime
+      return hrTime(inp + this._performanceOffset);
+    }
+
+    if (typeof inp === 'number') {
+      return millisToHrTime(inp);
+    }
+
+    if (inp instanceof Date) {
+      return millisToHrTime(inp.getTime());
+    }
+
+    if (isTimeInputHrTime(inp)) {
+      return inp;
+    }
+
+    if (this._startTimeProvided) {
+      // if user provided a time for the start manually
+      // we can't use duration to calculate event/end times
+      return millisToHrTime(Date.now());
+    }
+
+    const msDuration = otperformance.now() - this._performanceStartTime;
+    return addHrTimes(this.startTime, millisToHrTime(msDuration));
   }
 
   isRecording(): boolean {
     return this._ended === false;
   }
 
-  recordException(exception: api.Exception, time: api.TimeInput = this._clock.now()): void {
-    const attributes: api.SpanAttributes = {};
+  recordException(exception: Exception, time?: TimeInput): void {
+    const attributes: SpanAttributes = {};
     if (typeof exception === 'string') {
       attributes[SemanticAttributes.EXCEPTION_MESSAGE] = exception;
     } else if (exception) {
       if (exception.code) {
-        attributes[
-          SemanticAttributes.EXCEPTION_TYPE
-        ] = exception.code.toString();
+        attributes[SemanticAttributes.EXCEPTION_TYPE] =
+          exception.code.toString();
       } else if (exception.name) {
         attributes[SemanticAttributes.EXCEPTION_TYPE] = exception.name;
       }
@@ -233,11 +312,11 @@ export class Span implements api.Span, ReadableSpan {
     ) {
       this.addEvent(ExceptionEventName, attributes, time);
     } else {
-      api.diag.warn(`Failed to record an exception ${exception}`);
+      diag.warn(`Failed to record an exception ${exception}`);
     }
   }
 
-  get duration(): api.HrTime {
+  get duration(): HrTime {
     return this._duration;
   }
 
@@ -245,9 +324,23 @@ export class Span implements api.Span, ReadableSpan {
     return this._ended;
   }
 
+  get droppedAttributesCount(): number {
+    return this._droppedAttributesCount;
+  }
+
+  get droppedEventsCount(): number {
+    return this._droppedEventsCount;
+  }
+
+  get droppedLinksCount(): number {
+    return this._droppedLinksCount;
+  }
+
   private _isSpanEnded(): boolean {
     if (this._ended) {
-      api.diag.warn(`Can not execute the operation on ended Span {traceId: ${this._spanContext.traceId}, spanId: ${this._spanContext.spanId}}`);
+      diag.warn(
+        `Can not execute the operation on ended Span {traceId: ${this._spanContext.traceId}, spanId: ${this._spanContext.spanId}}`
+      );
     }
     return this._ended;
   }
@@ -279,7 +372,7 @@ export class Span implements api.Span, ReadableSpan {
     // Check limit
     if (limit <= 0) {
       // Negative values are invalid, so do not truncate
-      api.diag.warn(`Attribute value limit must be positive, got ${limit}`);
+      diag.warn(`Attribute value limit must be positive, got ${limit}`);
       return value;
     }
 
@@ -290,7 +383,9 @@ export class Span implements api.Span, ReadableSpan {
 
     // Array of strings
     if (Array.isArray(value)) {
-      return (value as []).map(val => typeof val === 'string' ? this._truncateToLimitUtil(val, limit) : val);
+      return (value as []).map(val =>
+        typeof val === 'string' ? this._truncateToLimitUtil(val, limit) : val
+      );
     }
 
     // Other types, no need to apply value length limit

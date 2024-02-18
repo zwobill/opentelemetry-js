@@ -104,7 +104,7 @@ describe('Packages', () => {
         const result = await httpPackage.get(urlparsed.href!);
         if (!resHeaders) {
           const res = result as AxiosResponse<unknown>;
-          resHeaders = res.headers;
+          resHeaders = res.headers as any;
         }
         const spans = memoryExporter.getFinishedSpans();
         const span = spans[0];
@@ -119,7 +119,7 @@ describe('Packages', () => {
         };
 
         assert.strictEqual(spans.length, 1);
-        assert.strictEqual(span.name, 'HTTP GET');
+        assert.strictEqual(span.name, 'GET');
 
         switch (name) {
           case 'axios':

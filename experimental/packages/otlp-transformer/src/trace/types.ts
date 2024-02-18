@@ -14,19 +14,30 @@
  * limitations under the License.
  */
 
-import { IInstrumentationScope, IKeyValue } from '../common/types';
+import { Fixed64, IInstrumentationScope, IKeyValue } from '../common/types';
 import { IResource } from '../resource/types';
 
 /** Properties of an ExportTraceServiceRequest. */
 export interface IExportTraceServiceRequest {
-
   /** ExportTraceServiceRequest resourceSpans */
   resourceSpans?: IResourceSpans[];
 }
 
+export interface IExportTraceServiceResponse {
+  /** ExportTraceServiceResponse partialSuccess */
+  partialSuccess?: IExportTracePartialSuccess;
+}
+
+export interface IExportTracePartialSuccess {
+  /** ExportLogsServiceResponse rejectedLogRecords */
+  rejectedSpans?: number;
+
+  /** ExportLogsServiceResponse errorMessage */
+  errorMessage?: string;
+}
+
 /** Properties of a ResourceSpans. */
 export interface IResourceSpans {
-
   /** ResourceSpans resource */
   resource?: IResource;
 
@@ -39,30 +50,29 @@ export interface IResourceSpans {
 
 /** Properties of an ScopeSpans. */
 export interface IScopeSpans {
-
   /** IScopeSpans scope */
   scope?: IInstrumentationScope;
 
   /** IScopeSpans spans */
-  spans?: ISpan[]
+  spans?: ISpan[];
 
   /** IScopeSpans schemaUrl */
-  schemaUrl?: (string | null);
+  schemaUrl?: string | null;
 }
 
 /** Properties of a Span. */
 export interface ISpan {
   /** Span traceId */
-  traceId: string;
+  traceId: string | Uint8Array;
 
   /** Span spanId */
-  spanId: string;
+  spanId: string | Uint8Array;
 
   /** Span traceState */
-  traceState?: (string | null);
+  traceState?: string | null;
 
   /** Span parentSpanId */
-  parentSpanId?: string;
+  parentSpanId?: string | Uint8Array;
 
   /** Span name */
   name: string;
@@ -71,28 +81,28 @@ export interface ISpan {
   kind: ESpanKind;
 
   /** Span startTimeUnixNano */
-  startTimeUnixNano: number;
+  startTimeUnixNano: Fixed64;
 
   /** Span endTimeUnixNano */
-  endTimeUnixNano: number;
+  endTimeUnixNano: Fixed64;
 
   /** Span attributes */
   attributes: IKeyValue[];
 
   /** Span droppedAttributesCount */
-  droppedAttributesCount: number
+  droppedAttributesCount: number;
 
   /** Span events */
   events: IEvent[];
 
   /** Span droppedEventsCount */
-  droppedEventsCount: number
+  droppedEventsCount: number;
 
   /** Span links */
   links: ILink[];
 
   /** Span droppedLinksCount */
-  droppedLinksCount: number
+  droppedLinksCount: number;
 
   /** Span status */
   status: IStatus;
@@ -107,30 +117,30 @@ export enum ESpanKind {
   SPAN_KIND_UNSPECIFIED = 0,
 
   /** Indicates that the span represents an internal operation within an application,
-    * as opposed to an operation happening at the boundaries. Default value.
-    */
+   * as opposed to an operation happening at the boundaries. Default value.
+   */
   SPAN_KIND_INTERNAL = 1,
 
   /** Indicates that the span covers server-side handling of an RPC or other
-    * remote network request.
-    */
+   * remote network request.
+   */
   SPAN_KIND_SERVER = 2,
 
   /** Indicates that the span describes a request to some remote service.
-    */
+   */
   SPAN_KIND_CLIENT = 3,
 
   /** Indicates that the span describes a producer sending a message to a broker.
-    * Unlike CLIENT and SERVER, there is often no direct critical path latency relationship
-    * between producer and consumer spans. A PRODUCER span ends when the message was accepted
-    * by the broker while the logical processing of the message might span a much longer time.
-    */
+   * Unlike CLIENT and SERVER, there is often no direct critical path latency relationship
+   * between producer and consumer spans. A PRODUCER span ends when the message was accepted
+   * by the broker while the logical processing of the message might span a much longer time.
+   */
   SPAN_KIND_PRODUCER = 4,
 
   /** Indicates that the span describes consumer receiving a message from a broker.
-    * Like the PRODUCER kind, there is often no direct critical path latency relationship
-    * between producer and consumer spans.
-    */
+   * Like the PRODUCER kind, there is often no direct critical path latency relationship
+   * between producer and consumer spans.
+   */
   SPAN_KIND_CONSUMER = 5,
 }
 
@@ -156,7 +166,7 @@ export const enum EStatusCode {
 /** Properties of an Event. */
 export interface IEvent {
   /** Event timeUnixNano */
-  timeUnixNano: number;
+  timeUnixNano: Fixed64;
 
   /** Event name */
   name: string;
@@ -171,10 +181,10 @@ export interface IEvent {
 /** Properties of a Link. */
 export interface ILink {
   /** Link traceId */
-  traceId: string;
+  traceId: string | Uint8Array;
 
   /** Link spanId */
-  spanId: string;
+  spanId: string | Uint8Array;
 
   /** Link traceState */
   traceState?: string;

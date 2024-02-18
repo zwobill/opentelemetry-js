@@ -15,10 +15,14 @@
  */
 
 import * as grpc from '@grpc/grpc-js';
-import { CompressionAlgorithm, OTLPExporterConfigBase, OTLPExporterError } from '@opentelemetry/otlp-exporter-base';
+import {
+  CompressionAlgorithm,
+  OTLPExporterConfigBase,
+  OTLPExporterError,
+} from '@opentelemetry/otlp-exporter-base';
 
 /**
- * Queue item to be used to save temporary spans/metrics in case the GRPC service
+ * Queue item to be used to save temporary spans/metrics/logs in case the GRPC service
  * hasn't been fully initialized yet
  */
 export interface GRPCQueueItem<ExportedItem> {
@@ -28,22 +32,23 @@ export interface GRPCQueueItem<ExportedItem> {
 }
 
 /**
- * Service Client for sending spans or metrics
+ * Service Client for sending spans/metrics/logs
  */
-export interface ServiceClient extends grpc.Client {
+export interface ServiceClient {
   export: (
     request: any,
     metadata: grpc.Metadata,
     options: grpc.CallOptions,
     callback: Function
   ) => {};
+
+  close(): void;
 }
 
 /**
  * OTLP Exporter Config for Node
  */
-export interface OTLPGRPCExporterConfigNode
-  extends OTLPExporterConfigBase {
+export interface OTLPGRPCExporterConfigNode extends OTLPExporterConfigBase {
   credentials?: grpc.ChannelCredentials;
   metadata?: grpc.Metadata;
   compression?: CompressionAlgorithm;
@@ -52,4 +57,5 @@ export interface OTLPGRPCExporterConfigNode
 export enum ServiceClientType {
   SPANS,
   METRICS,
+  LOGS,
 }

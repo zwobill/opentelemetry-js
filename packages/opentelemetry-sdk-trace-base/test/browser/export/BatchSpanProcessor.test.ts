@@ -20,10 +20,18 @@ import { SpanExporter } from '../../../src';
 import { BatchSpanProcessor } from '../../../src/platform/browser/export/BatchSpanProcessor';
 import { TestTracingSpanExporter } from '../../common/export/TestTracingSpanExporter';
 
-const describeDocument = typeof document === 'object' ? describe : describe.skip;
+/**
+ * VisibilityState has been removed from TypeScript 4.6.0+
+ * So just defining a simple replacement
+ */
+type WebVisibilityState = 'visible' | 'hidden';
+
+const describeDocument =
+  typeof document === 'object' ? describe : describe.skip;
 
 describeDocument('BatchSpanProcessor - web main context', () => {
-  let visibilityState: VisibilityState = 'visible';
+  // TODO: change to DocumentVisibilityState when TypeScript is upgraded to 4.6+
+  let visibilityState: WebVisibilityState = 'visible';
   let exporter: SpanExporter;
   let processor: BatchSpanProcessor;
   let forceFlushSpy: sinon.SinonStub;
@@ -63,7 +71,9 @@ describeDocument('BatchSpanProcessor - web main context', () => {
 
       describe('AND disableAutoFlushOnDocumentHide configuration option', () => {
         it('set to false should force flush spans', () => {
-          processor = new BatchSpanProcessor(exporter, { disableAutoFlushOnDocumentHide: false });
+          processor = new BatchSpanProcessor(exporter, {
+            disableAutoFlushOnDocumentHide: false,
+          });
           forceFlushSpy = sinon.stub(processor, 'forceFlush');
           assert.strictEqual(forceFlushSpy.callCount, 0);
           hideDocument();
@@ -71,7 +81,9 @@ describeDocument('BatchSpanProcessor - web main context', () => {
         });
 
         it('set to true should NOT force flush spans', () => {
-          processor = new BatchSpanProcessor(exporter, { disableAutoFlushOnDocumentHide: true });
+          processor = new BatchSpanProcessor(exporter, {
+            disableAutoFlushOnDocumentHide: true,
+          });
           forceFlushSpy = sinon.stub(processor, 'forceFlush');
           assert.strictEqual(forceFlushSpy.callCount, 0);
           hideDocument();

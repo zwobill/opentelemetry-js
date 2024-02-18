@@ -30,7 +30,7 @@ import { getEnv, baggageUtils } from '@opentelemetry/core';
  */
 export abstract class OTLPExporterNodeBase<
   ExportItem,
-  ServiceRequest
+  ServiceRequest,
 > extends OTLPExporterBase<
   OTLPExporterNodeConfigBase,
   ExportItem,
@@ -77,8 +77,7 @@ export abstract class OTLPExporterNodeBase<
         resolve,
         reject
       );
-    })
-      .then(onSuccess, onError);
+    }).then(onSuccess, onError);
 
     this._sendingPromises.push(promise);
     const popPromise = () => {

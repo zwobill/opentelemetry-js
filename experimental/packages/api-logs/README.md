@@ -1,13 +1,19 @@
-# OpenTelemetry API for JavaScript
+# OpenTelemetry Logs Bridge API for JavaScript
 
 [![NPM Published Version][npm-img]][npm-url]
 [![Apache License][license-image]][license-image]
 
-This package provides everything needed to interact with the unstable OpenTelemetry Logs API, including all TypeScript interfaces, enums, and no-op implementations. It is intended for use both on the server and in the browser.
+**Note: This is an experimental package under active development. New releases may include breaking changes.**
 
-## Beta Software - Use at your own risk
+This package provides everything needed to interact with the unstable OpenTelemetry Logs Bridge API, including all TypeScript interfaces, enums, and no-op implementations. It is intended for use both on the server and in the browser.
 
-The logs API is considered alpha software and there is no guarantee of stability or long-term support. When the API is stabilized, it will be made available and supported long-term in the `@opentelemetry/api` package and this package will be deprecated.
+**Note: This module defines a log backend API. The API is not intended to be called by application developers directly.
+It is provided for logging library authors to build log appenders, which use this API to bridge between existing
+logging libraries and the OpenTelemetry log data model.**
+
+## Alpha Software - Use at your own risk
+
+The Logs Bridge API is considered alpha software and there is no guarantee of stability or long-term support. When the API is stabilized, it will be made available and supported long-term in the `@opentelemetry/api` package and this package will be deprecated.
 
 ## Quick Start
 
@@ -38,11 +44,8 @@ api.logs.getLoggerProvider();
 /* returns a logger from the registered global logger provider (no-op if a working provider has not been initialized) */
 const logger = api.logs.getLogger(name, version);
 
-// logging an event in an instrumentation library
-logger.emitEvent({ name: 'event-name', domain: 'event-domain' });
-
-// logging an event in a log appender
-logger.emitLogRecord({ severityNumber: 1, body: 'log data' });
+// logging a log record in a log appender
+logger.emit({ severityNumber: SeverityNumber.TRACE, body: 'log data' });
 ```
 
 ## Useful links

@@ -20,7 +20,7 @@ import {
   sanitizeAttributes,
   isTracingSuppressed,
 } from '@opentelemetry/core';
-import { Resource } from '@opentelemetry/resources';
+import { IResource } from '@opentelemetry/resources';
 import { BasicTracerProvider } from './BasicTracerProvider';
 import { Span } from './Span';
 import { GeneralLimits, SpanLimits, TracerConfig } from './types';
@@ -38,7 +38,7 @@ export class Tracer implements api.Tracer {
   private readonly _generalLimits: GeneralLimits;
   private readonly _spanLimits: SpanLimits;
   private readonly _idGenerator: IdGenerator;
-  readonly resource: Resource;
+  readonly resource: IResource;
   readonly instrumentationLibrary: InstrumentationLibrary;
 
   /**
@@ -75,7 +75,9 @@ export class Tracer implements api.Tracer {
 
     if (isTracingSuppressed(context)) {
       api.diag.debug('Instrumentation suppressed, returning Noop Span');
-      const nonRecordingSpan = api.trace.wrapSpanContext(api.INVALID_SPAN_CONTEXT);
+      const nonRecordingSpan = api.trace.wrapSpanContext(
+        api.INVALID_SPAN_CONTEXT
+      );
       return nonRecordingSpan;
     }
 
@@ -84,7 +86,10 @@ export class Tracer implements api.Tracer {
     let traceId;
     let traceState;
     let parentSpanId;
-    if (!parentSpanContext || !api.trace.isSpanContextValid(parentSpanContext)) {
+    if (
+      !parentSpanContext ||
+      !api.trace.isSpanContextValid(parentSpanContext)
+    ) {
       // New root span.
       traceId = this._idGenerator.generateTraceId();
     } else {
@@ -112,16 +117,26 @@ export class Tracer implements api.Tracer {
       links
     );
 
+    traceState = samplingResult.traceState ?? traceState;
+
     const traceFlags =
       samplingResult.decision === api.SamplingDecision.RECORD_AND_SAMPLED
         ? api.TraceFlags.SAMPLED
         : api.TraceFlags.NONE;
     const spanContext = { traceId, spanId, traceFlags, traceState };
     if (samplingResult.decision === api.SamplingDecision.NOT_RECORD) {
-      api.diag.debug('Recording is off, propagating context in a non-recording span');
+      api.diag.debug(
+        'Recording is off, propagating context in a non-recording span'
+      );
       const nonRecordingSpan = api.trace.wrapSpanContext(spanContext);
       return nonRecordingSpan;
     }
+
+    // Set initial span attributes. The attributes object may have been mutated
+    // by the sampler, so we sanitize the merged attributes before setting them.
+    const initAttributes = sanitizeAttributes(
+      Object.assign(attributes, samplingResult.attributes)
+    );
 
     const span = new Span(
       this,
@@ -132,11 +147,9 @@ export class Tracer implements api.Tracer {
       parentSpanId,
       links,
       options.startTime,
+      undefined,
+      initAttributes
     );
-    // Set initial span attributes. The attributes object may have been mutated
-    // by the sampler, so we sanitize the merged attributes before setting them.
-    const initAttributes = sanitizeAttributes(Object.assign(attributes, samplingResult.attributes));
-    span.setAttributes(initAttributes);
     return span;
   }
 

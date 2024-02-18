@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-import * as RequireInTheMiddle from 'require-in-the-middle';
+import type { OnRequireFn } from 'require-in-the-middle';
+import { Hook } from 'require-in-the-middle';
 import * as path from 'path';
 import { ModuleNameTrie, ModuleNameSeparator } from './ModuleNameTrie';
 
 export type Hooked = {
-  moduleName: string
-  onRequire: RequireInTheMiddle.OnRequireFn
+  moduleName: string;
+  onRequire: OnRequireFn;
 };
 
 /**
@@ -29,7 +30,14 @@ export type Hooked = {
  *
  * @type {boolean}
  */
-const isMocha = ['afterEach','after','beforeEach','before','describe','it'].every(fn => {
+const isMocha = [
+  'afterEach',
+  'after',
+  'beforeEach',
+  'before',
+  'describe',
+  'it',
+].every(fn => {
   // @ts-expect-error TS7053: Element implicitly has an 'any' type
   return typeof global[fn] === 'function';
 });
@@ -52,7 +60,7 @@ export class RequireInTheMiddleSingleton {
   }
 
   private _initialize() {
-    RequireInTheMiddle(
+    new Hook(
       // Intercept all `require` calls; we will filter the matching ones below
       null,
       { internals: true },
@@ -60,7 +68,13 @@ export class RequireInTheMiddleSingleton {
         // For internal files on Windows, `name` will use backslash as the path separator
         const normalizedModuleName = normalizePathSeparators(name);
 
-        const matches = this._moduleNameTrie.search(normalizedModuleName, { maintainInsertionOrder: true });
+        const matches = this._moduleNameTrie.search(normalizedModuleName, {
+          maintainInsertionOrder: true,
+          // For core modules (e.g. `fs`), do not match on sub-paths (e.g. `fs/promises').
+          // This matches the behavior of `require-in-the-middle`.
+          // `basedir` is always `undefined` for core modules.
+          fullOnly: basedir === undefined,
+        });
 
         for (const { onRequire } of matches) {
           exports = onRequire(exports, name, basedir);
@@ -75,10 +89,10 @@ export class RequireInTheMiddleSingleton {
    * Register a hook with `require-in-the-middle`
    *
    * @param {string} moduleName Module name
-   * @param {RequireInTheMiddle.OnRequireFn} onRequire Hook function
+   * @param {OnRequireFn} onRequire Hook function
    * @returns {Hooked} Registered hook
    */
-  register(moduleName: string, onRequire: RequireInTheMiddle.OnRequireFn): Hooked {
+  register(moduleName: string, onRequire: OnRequireFn): Hooked {
     const hooked = { moduleName, onRequire };
     this._moduleNameTrie.insert(hooked);
     return hooked;
@@ -94,7 +108,8 @@ export class RequireInTheMiddleSingleton {
     // This prevents test suites from sharing a singleton
     if (isMocha) return new RequireInTheMiddleSingleton();
 
-    return this._instance = this._instance ?? new RequireInTheMiddleSingleton();
+    return (this._instance =
+      this._instance ?? new RequireInTheMiddleSingleton());
   }
 }
 
